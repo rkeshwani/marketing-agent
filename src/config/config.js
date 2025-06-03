@@ -27,10 +27,13 @@ const config = {
   // Facebook App Access Token (for public searches or app-level actions)
   FACEBOOK_APP_ACCESS_TOKEN: process.env.FACEBOOK_APP_ACCESS_TOKEN || '',
 
-  // New: Google Ads API Configuration
+  // Google Ads API Configuration
   GOOGLE_ADS_DEVELOPER_TOKEN: process.env.GOOGLE_ADS_DEVELOPER_TOKEN || '',
   GOOGLE_ADS_SERVICE_ACCOUNT_KEY_PATH: process.env.GOOGLE_ADS_SERVICE_ACCOUNT_KEY_PATH || '', // e.g., './ga_service_account.json'
   GOOGLE_ADS_LOGIN_CUSTOMER_ID: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '', // ID of the manager or client account
+
+  // E2B Code Interpreter API Key
+  E2B_API_KEY: process.env.E2B_API_KEY || '',
 
   // Add other configurations as needed
 };

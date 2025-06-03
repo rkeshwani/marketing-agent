@@ -264,8 +264,18 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
         } else {
             // TODO: Add argument validation against toolSchema.parameters here in a future step.
 
-            const toolOutput = await executeTool(toolCall.name, toolCall.arguments, objective.projectId);
+            const toolOutput = await executeTool(toolCall.name, toolCall.arguments, objective.projectId); // Objective is in scope
             console.log(`Agent: Tool ${toolCall.name} executed. Output:`, toolOutput);
+
+            // If executeTool returns an object with askUserInput, handle it
+            if (toolOutput && toolOutput.askUserInput) {
+                // The objective (with pendingToolBudgetInquiry) would have been set inside executeTool
+                // Add agent's question to chat history
+                objective.chatHistory.push({ speaker: 'agent', content: toolOutput.message });
+                // Save objective with pendingToolBudgetInquiry and new chat history
+                dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
+                return toolOutput; // Return the { askUserInput, message } object directly
+            }
 
             // Add tool call and tool output to chat history for context
             // This simple string representation can be improved with structured messages later.

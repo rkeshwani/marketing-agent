@@ -3,6 +3,14 @@
 const fetch = require('node-fetch');
 const config = require('../config/config'); // Path relative to src/services/
 const vectorService = require('./vectorService'); // In the same services folder
+const e2bService = require('./e2bService'); // For executing Python scripts
+const geminiService = require('./geminiService'); // For generating Python script
+const fs = require('fs/promises');
+const fsSync = require('fs'); // For createWriteStream and existsSync
+const path = require('path');
+const http = require('http');
+const https = require('https');
+
 
 // Note: The following functions rely on global.dataStore being available,
 // similar to how they were used when defined directly in agent.js.
@@ -275,60 +283,32 @@ async function execute_tiktok_create_post(params, projectId) {
     return JSON.stringify({ data: { item_id: `mocktiktokpost${Date.now()}` }, error_code: 0, error_message: "" });
 }
 
-// --- Google Ads Tool Functions (Scaffolding - to be called by Agent) ---
-// Placeholder for actual OAuth token generation logic
+// --- Google Ads Tool Functions ---
 async function getGoogleAdsOAuthToken(keyPath) {
     console.log(`Requesting OAuth token with key from ${keyPath} (MOCK)`);
-    // In a real scenario, this would use google-auth-library or similar
-    // to exchange a service account key for an OAuth2 token.
     if (!keyPath) return Promise.reject("Service account key path not provided for Google Ads.");
-    return "mock-oauth-token-for-google-ads"; // Placeholder token
+    return "mock-oauth-token-for-google-ads";
 }
 
 async function execute_google_ads_create_campaign_from_config(campaignConfig, budget, projectId) {
     console.log(`Executing execute_google_ads_create_campaign_from_config for project ${projectId}`, { campaignConfig, budget });
     const devToken = config.GOOGLE_ADS_DEVELOPER_TOKEN;
     const keyPath = config.GOOGLE_ADS_SERVICE_ACCOUNT_KEY_PATH;
-    const loginCustomerId = config.GOOGLE_ADS_LOGIN_CUSTOMER_ID; // This is often the MCC ID
-
+    const loginCustomerId = config.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
     if (!devToken || !keyPath) {
         return JSON.stringify({ error: "Google Ads developer token or service account key path not configured." });
     }
-    if (!loginCustomerId) {
-        console.warn("GOOGLE_ADS_LOGIN_CUSTOMER_ID is not set. API calls may require it.");
-    }
-
+    if (!loginCustomerId) console.warn("GOOGLE_ADS_LOGIN_CUSTOMER_ID is not set. API calls may require it.");
     try {
         const oauthToken = await getGoogleAdsOAuthToken(keyPath);
-        // Construct API payload from campaignConfig and budget
-        const apiPayload = {
-            // This is highly simplified. Real payload is complex.
-            // Example: campaignConfig might be directly usable if Gemini formats it perfectly.
-            ...campaignConfig, // Spread the config from Gemini
-            budget: { // Assuming budget needs to be structured
-                amount_micros: parseFloat(budget.replace('$', '')) * 1000000, // Example: "$50" -> 50000000
-                // Add budget period (daily, total) based on user input or campaignConfig
-            },
-            // Add more fields like status: 'PAUSED' for new campaigns
-        };
-
-        const customerIdForApi = campaignConfig.customer_id || loginCustomerId; // Use customer_id from config if provided, else default
-        if (!customerIdForApi) {
-             return JSON.stringify({ error: "Customer ID for Google Ads campaign creation is missing." });
-        }
-
+        const apiPayload = { ...campaignConfig, budget: { amount_micros: parseFloat(budget.replace('$', '')) * 1000000 } };
+        const customerIdForApi = campaignConfig.customer_id || loginCustomerId;
+        if (!customerIdForApi) return JSON.stringify({ error: "Customer ID for Google Ads campaign creation is missing." });
         const mockApiEndpoint = `https://googleads.googleapis.com/vXX/customers/${customerIdForApi}/campaigns:mutate`;
         console.log("Mocking Google Ads API Call (Create Campaign):", mockApiEndpoint, "Payload:", apiPayload);
         console.log("Using Dev Token:", devToken, "OAuth Token:", oauthToken.substring(0,15) + "...");
-
-        // Simulate fetch call
-        // const response = await fetch(mockApiEndpoint, { /* method, headers, body */ });
-        // if (!response.ok) { /* handle error */ }
-        // const responseData = await response.json();
-
         const mockCampaignId = `mockCampaign_${Date.now()}`;
         return JSON.stringify({ results: [{ resourceName: `customers/${customerIdForApi}/campaigns/${mockCampaignId}` }] });
-
     } catch (error) {
         console.error("Error in execute_google_ads_create_campaign_from_config:", error);
         return JSON.stringify({ error: "Failed to execute Google Ads campaign creation." });
@@ -340,25 +320,19 @@ async function execute_google_ads_create_ad_group_from_config(adGroupConfig, pro
     const devToken = config.GOOGLE_ADS_DEVELOPER_TOKEN;
     const keyPath = config.GOOGLE_ADS_SERVICE_ACCOUNT_KEY_PATH;
     const loginCustomerId = config.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
-
     if (!devToken || !keyPath) {
         return JSON.stringify({ error: "Google Ads developer token or service account key path not configured." });
     }
-     if (!adGroupConfig || !adGroupConfig.campaign_id) { // campaign_id should be part of adGroupConfig
+     if (!adGroupConfig || !adGroupConfig.campaign_id) {
         return JSON.stringify({ error: "Campaign ID is missing in adGroupConfig." });
     }
-
     try {
         const oauthToken = await getGoogleAdsOAuthToken(keyPath);
         const customerIdForApi = adGroupConfig.customer_id || loginCustomerId;
-         if (!customerIdForApi) {
-             return JSON.stringify({ error: "Customer ID for Google Ads ad group creation is missing." });
-        }
-
+         if (!customerIdForApi) return JSON.stringify({ error: "Customer ID for Google Ads ad group creation is missing." });
         const mockApiEndpoint = `https://googleads.googleapis.com/vXX/customers/${customerIdForApi}/adGroups:mutate`;
         console.log("Mocking Google Ads API Call (Create Ad Group):", mockApiEndpoint, "Payload:", adGroupConfig);
         console.log("Using Dev Token:", devToken, "OAuth Token:", oauthToken.substring(0,15) + "...");
-
         const mockAdGroupId = `mockAdGroup_${Date.now()}`;
         return JSON.stringify({ results: [{ resourceName: `customers/${customerIdForApi}/adGroups/${mockAdGroupId}` }] });
     } catch (error) {
@@ -372,35 +346,29 @@ async function execute_google_ads_create_ad_from_config(adConfig, projectId) {
     const devToken = config.GOOGLE_ADS_DEVELOPER_TOKEN;
     const keyPath = config.GOOGLE_ADS_SERVICE_ACCOUNT_KEY_PATH;
     const loginCustomerId = config.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
-
     if (!devToken || !keyPath) {
         return JSON.stringify({ error: "Google Ads developer token or service account key path not configured." });
     }
-    if (!adConfig || !adConfig.ad_group_id) { // ad_group_id should be part of adConfig
+    if (!adConfig || !adConfig.ad_group_id) {
         return JSON.stringify({ error: "Ad Group ID is missing in adConfig." });
     }
-
     try {
         const oauthToken = await getGoogleAdsOAuthToken(keyPath);
         const customerIdForApi = adConfig.customer_id || loginCustomerId;
-         if (!customerIdForApi) {
-             return JSON.stringify({ error: "Customer ID for Google Ads ad creation is missing." });
-        }
-
-        // Ad creation involves AdGroupAd and Ad resources, so it's more complex.
-        // This is a highly simplified mock.
+         if (!customerIdForApi) return JSON.stringify({ error: "Customer ID for Google Ads ad creation is missing." });
         const mockApiEndpoint = `https://googleads.googleapis.com/vXX/customers/${customerIdForApi}/adGroupAds:mutate`;
         console.log("Mocking Google Ads API Call (Create Ad):", mockApiEndpoint, "Payload:", adConfig);
         console.log("Using Dev Token:", devToken, "OAuth Token:", oauthToken.substring(0,15) + "...");
-
         const mockAdId = `mockAd_${Date.now()}`;
-        // Real response is more complex, often an array of AdGroupAd for ads.
         return JSON.stringify({ results: [{ resourceName: `customers/${customerIdForApi}/ads/${mockAdId}` }] });
     } catch (error) {
         console.error("Error in execute_google_ads_create_ad_from_config:", error);
         return JSON.stringify({ error: "Failed to execute Google Ads ad creation." });
     }
 }
+
+// --- Dynamic Asset Script Execution ---
+// (To be added in the next step)
 
 
 module.exports = {
@@ -416,3 +384,5 @@ module.exports = {
     execute_google_ads_create_ad_group_from_config,
     execute_google_ads_create_ad_from_config
 };
+
+[end of src/services/toolExecutorService.js]
