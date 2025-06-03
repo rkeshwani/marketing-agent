@@ -152,19 +152,29 @@ function setup() {
     mockExecutePlanStepResponse = 'Default step response'; // Reset for each test
 
     global.dataStore = {
-        findObjectiveById: (objectiveId) => (objectiveId === mockObjective.id ? mockObjective : null),
-        updateObjectiveById: (objectiveId, title, brief, plan, chatHistory) => {
+        findObjectiveById: jest.fn((objectiveId) => (objectiveId === mockObjective.id ? mockObjective : null)),
+        updateObjectiveById: jest.fn((objectiveId, title, brief, plan, chatHistory) => {
             if (objectiveId === mockObjective.id) {
                 mockObjective.title = title !== undefined ? title : mockObjective.title;
                 mockObjective.brief = brief !== undefined ? brief : mockObjective.brief;
                 mockObjective.plan = plan !== undefined ? plan : mockObjective.plan;
                 mockObjective.chatHistory = chatHistory !== undefined ? chatHistory : mockObjective.chatHistory;
+                // Simulate that other fields like originalPlan might be on mockObjective directly
+                return { ...mockObjective }; // Return a copy to avoid direct state mutation issues
+            }
+            return null;
+        }),
+        // Add updateObjective mock, as it's used by new recurrence logic
+        updateObjective: jest.fn((objectiveToUpdate) => {
+            if (objectiveToUpdate.id === mockObjective.id) {
+                // Update the global mockObjective to reflect changes for subsequent assertions
+                mockObjective = { ...mockObjective, ...objectiveToUpdate };
                 return mockObjective;
             }
             return null;
-        },
-        findProjectById: (projectId) => (projectId === mockObjective.projectId ? { id: mockObjective.projectId, name: 'Test Project', assets: mockObjective.assets } : null),
-        updateProjectById: (projectId, updateData) => {
+        }),
+        findProjectById: jest.fn((projectId) => (projectId === mockObjective.projectId ? { id: mockObjective.projectId, name: 'Test Project', assets: mockObjective.assets } : null)),
+        updateProjectById: jest.fn((projectId, updateData) => {
             if (projectId === mockObjective.projectId) {
                 if (updateData.assets !== undefined) mockObjective.assets = updateData.assets;
                 return { ...mockObjective, ...updateData }; // Simplified project object
@@ -176,13 +186,23 @@ function setup() {
     // Keep direct mock for geminiService as it's more about controlling agent's interaction with it
     originalFetchGeminiResponse = geminiService.fetchGeminiResponse;
     originalExecutePlanStep = geminiService.executePlanStep;
+    // Mock generatePlanForObjective as it's used by initializeAgent and new recurrence logic
+    originalGeneratePlanForObjective = geminiService.generatePlanForObjective;
 
-    geminiService.fetchGeminiResponse = async (userInput, chatHistory, projectAssets) => {
+
+    geminiService.fetchGeminiResponse = jest.fn(async (userInput, chatHistory, projectAssets) => {
         if (userInput === "error_test") throw new Error("Simulated service error");
         if (userInput.startsWith('The tool')) return `Gemini summary based on tool output: ${userInput.substring(0, 200)}...`;
         return `Mocked conversational response to: ${userInput}`;
-    };
-    geminiService.executePlanStep = async (stepDescription, chatHistory, projectAssets) => mockExecutePlanStepResponse;
+    });
+    geminiService.executePlanStep = jest.fn(async (stepDescription, chatHistory, projectAssets) => mockExecutePlanStepResponse);
+    geminiService.generatePlanForObjective = jest.fn(async (objective, projectAssets) => {
+        // Default mock plan generation
+        return {
+            planSteps: ['Generated Step 1 for ' + objective.title, 'Generated Step 2'],
+            questions: ['Generated Question 1?']
+        };
+    });
 
     // Clear Jest mocks for fetch and vectorService before each test run
     fetch.mockClear();
@@ -207,7 +227,16 @@ function setup() {
 function teardown() {
     geminiService.fetchGeminiResponse = originalFetchGeminiResponse;
     geminiService.executePlanStep = originalExecutePlanStep;
+    geminiService.generatePlanForObjective = originalGeneratePlanForObjective; // Restore
     mockObjective = null;
+    // Clear mocks on dataStore functions
+    if (global.dataStore) {
+        Object.values(global.dataStore).forEach(mockFn => {
+            if (jest.isMockFunction(mockFn)) {
+                mockFn.mockClear();
+            }
+        });
+    }
     global.dataStore = undefined;
     mockExecutePlanStepResponse = null;
 
@@ -458,6 +487,12 @@ async function runTests() {
     await testAgentHandlesFacebookCreatePostErrorFromToolService();
     // Add calls to testAgentExecutesFacebookPublicSearch and testAgentExecutesTikTokSearch etc. when implemented
 
+    // --- Tests for Recurrence Functionality ---
+    await testInitializeAgent_forRecurringObjective_storesOriginalPlan();
+    await testGetAgentResponse_RecurringInstanceCompletes_schedulesNext();
+    await testGetAgentResponse_AgentPicksUpScheduledRecurringTask_refreshesPlan();
+
+
     console.log('All agent tests passed!');
   } catch (error) {
     console.error('Agent Test Suite Failed:', error.message, error.stack);
@@ -465,12 +500,116 @@ async function runTests() {
   }
 }
 
-// If this file is run directly, execute the tests
-if (require.main === module) {
-  runTests();
+
+// --- Recurrence Functionality Tests ---
+
+async function testInitializeAgent_forRecurringObjective_storesOriginalPlan() {
+    console.log('Test: initializeAgent for recurring objective stores originalPlan...');
+    setup();
+    mockObjective.isRecurring = true;
+    mockObjective.originalPlan = null; // Ensure it starts as null
+
+    const mockGeneratedPlan = {
+        planSteps: ['Recurring Step 1', 'Recurring Step 2'],
+        questions: ['Recurring Q1?']
+    };
+    geminiService.generatePlanForObjective.mockResolvedValue(mockGeneratedPlan);
+    global.dataStore.updateObjective.mockClear(); // Clear before call
+
+    await agent.initializeAgent(mockObjective.id);
+
+    expect(geminiService.generatePlanForObjective).toHaveBeenCalledWith(mockObjective, []); // Assuming no project assets for this test
+    expect(mockObjective.originalPlan).toEqual({
+        steps: mockGeneratedPlan.planSteps,
+        questions: mockGeneratedPlan.questions
+    });
+    expect(mockObjective.plan.steps).toEqual(mockGeneratedPlan.planSteps); // Active plan also gets steps
+    expect(mockObjective.plan.status).toBe('pending_approval');
+    expect(global.dataStore.updateObjective).toHaveBeenCalledWith(mockObjective); // or updateObjectiveById with all relevant fields
+    console.log('Test Passed: initializeAgent for recurring objective stores originalPlan.');
+    teardown();
 }
 
-// --- New tests for Social Media Tools ---
+async function testGetAgentResponse_RecurringInstanceCompletes_schedulesNext() {
+    console.log('Test: getAgentResponse when recurring instance completes, schedules next...');
+    setup();
+    mockObjective.isRecurring = true;
+    mockObjective.recurrenceRule = { frequency: 'daily', interval: 1 };
+    mockObjective.originalPlan = {
+        steps: ['Original Step 1', 'Original Step 2'],
+        questions: ['Original Q1?']
+    };
+    mockObjective.plan = {
+        steps: ['Current Instance Step 1', 'Current Instance Step 2'],
+        status: 'approved', // Will become 'completed' during the call
+        currentStepIndex: 1, // About to complete the last step
+        questions: []
+    };
+    mockExecutePlanStepResponse = 'Final step summary for recurrence.';
+    global.dataStore.updateObjective.mockClear();
+
+    // Simulate completing the last step
+    const response = await agent.getAgentResponse('User input for final step', [], mockObjective.id);
+
+    expect(response.planStatus).toBe('pending_scheduling');
+    expect(mockObjective.plan.status).toBe('pending_scheduling');
+    expect(mockObjective.nextRunTime).toBeInstanceOf(Date);
+    const now = new Date();
+    const expectedNextRunTime = new Date(now.setDate(now.getDate() + 1));
+    // Allow a small delta for the time comparison (e.g., a few seconds)
+    expect(Math.abs(mockObjective.nextRunTime.getTime() - expectedNextRunTime.getTime())).toBeLessThan(5000);
+
+    expect(mockObjective.plan.steps).toEqual(mockObjective.originalPlan.steps);
+    expect(mockObjective.plan.currentStepIndex).toBe(0);
+    expect(mockObjective.currentRecurrenceContext).toEqual({
+        previousPostSummary: 'Final step summary for recurrence.',
+        lastCompletionTime: expect.any(String) // ISO string
+    });
+    expect(global.dataStore.updateObjective).toHaveBeenCalledWith(mockObjective);
+    console.log('Test Passed: getAgentResponse correctly schedules next recurring instance.');
+    teardown();
+}
+
+async function testGetAgentResponse_AgentPicksUpScheduledRecurringTask_refreshesPlan() {
+    console.log('Test: getAgentResponse when agent picks up scheduled recurring task, refreshes plan...');
+    setup();
+    mockObjective.isRecurring = true;
+    mockObjective.originalPlan = { steps: ['Old Step 1'], questions: ['Old Q1?'] };
+    mockObjective.plan = { // This plan is a direct copy from originalPlan, set by recurrence completion logic
+        steps: ['Old Step 1'],
+        status: 'approved', // Scheduler sets this
+        currentStepIndex: 0, // Scheduler resets this
+        questions: ['Old Q1?']
+    };
+    mockObjective.currentRecurrenceContext = { previousPostSummary: 'Summary from last run' };
+
+    const refreshedPlanFromGemini = {
+        planSteps: ['Refreshed Step 1 based on context', 'Refreshed Step 2'],
+        questions: ['Refreshed Q1?']
+    };
+    geminiService.generatePlanForObjective.mockResolvedValue(refreshedPlanFromGemini);
+    mockExecutePlanStepResponse = "Executing refreshed step 1"; // Response for the first step of the *refreshed* plan
+    global.dataStore.updateObjective.mockClear();
+
+
+    const response = await agent.getAgentResponse('User triggers interaction with scheduled task', [], mockObjective.id);
+
+    // Verify plan refresh happened
+    expect(geminiService.generatePlanForObjective).toHaveBeenCalledWith(mockObjective, []); // Project assets might be empty
+    expect(mockObjective.plan.steps).toEqual(refreshedPlanFromGemini.planSteps);
+    expect(mockObjective.plan.questions).toEqual(refreshedPlanFromGemini.questions);
+    expect(global.dataStore.updateObjective).toHaveBeenCalledWith(mockObjective); // To save the refreshed plan
+
+    // Verify execution proceeds with the refreshed plan
+    expect(response.message).toBe('Executing refreshed step 1');
+    expect(response.stepDescription).toBe(refreshedPlanFromGemini.planSteps[0]);
+    expect(mockObjective.plan.currentStepIndex).toBe(1); // After executing the first refreshed step
+    console.log('Test Passed: getAgentResponse refreshes plan for scheduled recurring task.');
+    teardown();
+}
+
+
+// --- Social Media Tool Tests (Originals) ---
 async function testAgentExecutesFacebookManagedPageSearch() {
     console.log('Test: Agent executes facebook_managed_page_posts_search tool...');
     setup();
@@ -534,4 +673,10 @@ async function testAgentHandlesFacebookCreatePostErrorFromToolService() {
     teardown();
 }
 
+
+// --- Final Setup for Running Tests ---
+// If this file is run directly, execute the tests
+if (require.main === module) {
+  runTests();
+}
 module.exports = { runTests }; // Export for potential use with a test runner

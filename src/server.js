@@ -12,8 +12,13 @@ const { generateProjectContextQuestions, structureProjectContextAnswers } = requ
 const Project = require('./models/Project');
 const Objective = require('./models/Objective');
 const dataStore = require('./dataStore');
+const SchedulerService = require('./services/schedulerService'); // Added: Import SchedulerService
 const app = express();
 const port = process.env.PORT || 3000;
+
+// --- Initialize Scheduler ---
+const schedulerServiceInstance = new SchedulerService(dataStore);
+const SCHEDULER_INTERVAL_MS = 60 * 1000; // Check every minute
 
 // --- OAuth & App Configuration Placeholders ---
 const FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID || 'YOUR_FACEBOOK_APP_ID';
@@ -1017,4 +1022,14 @@ app.get(/^\/(?!api).*/, (req, res) => {
 app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}`);
   console.log('PWA client should be accessible at http://localhost:${port}/');
+
+  // Start the scheduler
+  console.log(`Starting scheduler to check for tasks every ${SCHEDULER_INTERVAL_MS / 1000} seconds.`);
+  setInterval(() => {
+    try {
+      schedulerServiceInstance.checkScheduledTasks();
+    } catch (error) {
+      console.error("Error during scheduled task check:", error);
+    }
+  }, SCHEDULER_INTERVAL_MS);
 });

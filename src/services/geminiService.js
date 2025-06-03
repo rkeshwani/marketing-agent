@@ -113,15 +113,31 @@ async function generatePlanForObjective(objective, projectAssets = []) {
   console.log('GeminiService (generatePlanForObjective): Received objective -', objective.title);
   console.log('GeminiService (generatePlanForObjective): Received project assets:', projectAssets.length > 0 ? projectAssets.map(a => a.name) : 'No assets');
 
+  let userPromptContent;
+  const baseBrief = objective.brief;
+
+  if (objective.currentRecurrenceContext && objective.currentRecurrenceContext.previousPostSummary) {
+    userPromptContent = `This is a recurring task. The summary of the last completed instance was: "${objective.currentRecurrenceContext.previousPostSummary}".
+The overall objective is: "${baseBrief}".
+Please generate a detailed, actionable plan for the *next* instance of this recurring task. This new plan should ensure continuity or appropriate variation based on the previous actions and summary. Focus on generating specific, actionable steps for this new instance.`;
+  } else if (objective.isRecurring && !objective.originalPlan) {
+    // This condition means it's the first time we are generating a plan for an objective that IS recurring,
+    // but its originalPlan (template) hasn't been stored yet.
+    userPromptContent = `This is the first time setting up a recurring task. The overall objective is: "${baseBrief}".
+Please generate a detailed, actionable plan that can serve as a template for future recurrences. The steps should be somewhat generic if they are to be reused, but specific enough to be actionable.`;
+  } else {
+    userPromptContent = `Generate a detailed, actionable plan for the objective: "${baseBrief}".`;
+  }
+
   const prompt = `
 Based on the following marketing objective:
 Title: "${objective.title}"
-Brief: "${objective.brief}"
+Contextual Brief: "${userPromptContent}"
 
 AVAILABLE_ASSETS:
 ${projectAssets.length > 0 ? projectAssets.map(asset => `- ${asset.name} (Type: ${asset.type}, Tags: ${asset.tags.join(', ')})`).join('\n') : 'No assets available.'}
 
-Please generate a strategic plan to achieve this objective. The plan should consist of clear, actionable steps.
+Please generate a strategic plan. The plan should consist of clear, actionable steps.
 For each step, consider if it requires:
 1. Accessing social media APIs (e.g., for posting, fetching data).
 2. Creating new content (e.g., text, images, videos).
@@ -142,7 +158,6 @@ If you have no questions, write "QUESTIONS: None".
   `.trim();
 
   // Call the existing fetchGeminiResponse with the detailed prompt
-  // For this subtask, fetchGeminiResponse is modified to return a structured string for parsing.
   const geminiResponseString = await fetchGeminiResponse(prompt, [], projectAssets); // Pass projectAssets
   console.log('GeminiService (generatePlanForObjective): Received raw response for parsing:\n', geminiResponseString);
 

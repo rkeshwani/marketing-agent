@@ -14,6 +14,13 @@ class Objective {
         this.chatHistory = []; // Initialize with an empty array
         this.createdAt = new Date();
         this.updatedAt = new Date();
+
+        // Recurrence properties
+        this.isRecurring = false;
+        this.recurrenceRule = null;
+        this.nextRunTime = null;
+        this.originalPlan = null;
+        this.currentRecurrenceContext = null;
     }
 }
 
