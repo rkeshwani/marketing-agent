@@ -14,6 +14,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const projectNameInput = document.getElementById('project-name');
     const projectDescriptionInput = document.getElementById('project-description');
     const selectedProjectNameElement = document.getElementById('selected-project-name');
+    // New buttons for social media connection
+    const connectFacebookBtn = document.getElementById('connect-facebook-btn');
+    const connectTiktokBtn = document.getElementById('connect-tiktok-btn');
 
     const objectiveListContainer = document.getElementById('objective-list-container');
     const createObjectiveForm = document.getElementById('create-objective-form');
@@ -351,6 +354,37 @@ document.addEventListener('DOMContentLoaded', () => {
     if (backToProjectsButton) backToProjectsButton.addEventListener('click', showProjectsSection);
     if (backToObjectivesButton) backToObjectivesButton.addEventListener('click', showObjectivesSection);
 
+    // Event listeners for new social media connect buttons
+    if (connectFacebookBtn) {
+        connectFacebookBtn.addEventListener('click', () => {
+            const name = projectNameInput.value.trim();
+            const description = projectDescriptionInput.value.trim();
+            // Basic validation, can be enhanced
+            if (!name) {
+                displayError('Project name is required before connecting.', createProjectForm);
+                return;
+            }
+            sessionStorage.setItem('pendingProjectName', name);
+            sessionStorage.setItem('pendingProjectDescription', description);
+            window.location.href = '/auth/facebook';
+        });
+    }
+
+    if (connectTiktokBtn) {
+        connectTiktokBtn.addEventListener('click', () => {
+            const name = projectNameInput.value.trim();
+            const description = projectDescriptionInput.value.trim();
+            // Basic validation, can be enhanced
+            if (!name) {
+                displayError('Project name is required before connecting.', createProjectForm);
+                return;
+            }
+            sessionStorage.setItem('pendingProjectName', name);
+            sessionStorage.setItem('pendingProjectDescription', description);
+            window.location.href = '/auth/tiktok';
+        });
+    }
+
     if (sendButton) sendButton.addEventListener('click', handleSendMessage);
     if (userInputElement) userInputElement.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
@@ -361,6 +395,36 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Initial Load ---
     showProjectsSection();
     fetchProjects();
+
+    // --- UI Notifications from URL parameters ---
+    const params = new URLSearchParams(window.location.search);
+    const message = params.get('message');
+    const status = params.get('status');
+
+    if (message) {
+        const notificationDiv = document.createElement('div');
+        notificationDiv.id = 'user-notification';
+        // Replace + with space, then decode URI component for full message
+        notificationDiv.textContent = decodeURIComponent(message.replace(/\+/g, ' '));
+        notificationDiv.className = status === 'success' ? 'notification-success' : 'notification-error';
+
+        const appContainer = document.getElementById('app-container'); // Or another suitable parent
+        if (appContainer) {
+            // Insert it at the top of the app-container, before the header
+            appContainer.insertBefore(notificationDiv, appContainer.firstChild);
+        } else {
+            // Fallback if app-container is not found
+            document.body.prepend(notificationDiv);
+        }
+
+        setTimeout(() => {
+            notificationDiv.style.opacity = '0'; // Start fade out
+            setTimeout(() => notificationDiv.remove(), 500); // Remove after fade out
+        }, 5000); // Start hiding after 5 seconds
+
+        // Clean the URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
 
     console.log('PWA client app.js fully integrated for Project, Objective, and Chat Management.');
 });

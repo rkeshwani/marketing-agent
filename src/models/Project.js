@@ -6,6 +6,19 @@ class Project {
         this.description = description;
         this.createdAt = new Date();
         this.updatedAt = new Date();
+
+        // Facebook fields
+        this.facebookUserAccessToken = null;
+        this.facebookUserID = null;
+        this.facebookSelectedPageID = null;
+        this.facebookPageName = null; // Added for storing the selected page's name
+        this.facebookPageAccessToken = null;
+        this.facebookPermissions = [];
+
+        // TikTok fields
+        this.tiktokAccessToken = null;
+        this.tiktokUserID = null;
+        this.tiktokPermissions = [];
     }
 }
 
