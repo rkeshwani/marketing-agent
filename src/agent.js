@@ -1,12 +1,114 @@
-// Import the placeholder Gemini service
-// Using require for Node.js commonJS modules by default
+// Import services
 const geminiService = require('./services/geminiService');
-// We need both functions, so we can destructure or use geminiService.functionName
-// For clarity with the subtask, let's assume we'll use geminiService.generatePlanForObjective
-// and geminiService.fetchGeminiResponse. No change to import line needed if using dot notation.
-// If we wanted to destructure:
-// const { fetchGeminiResponse, generatePlanForObjective } = require('./services/geminiService');
+const { getToolSchema } = require('./services/toolRegistryService');
 
+// --- Specific Tool Implementations ---
+
+async function perform_semantic_search_assets_tool(query, projectId) {
+    console.log(`Executing semantic_search_assets_tool for project ${projectId} with query: ${query}`);
+    const project = global.dataStore.findProjectById(projectId);
+    if (project && project.assets && project.assets.length > 0) {
+        const results = project.assets.filter(asset =>
+            (asset.name && asset.name.toLowerCase().includes(query.toLowerCase())) ||
+            (asset.description && asset.description.toLowerCase().includes(query.toLowerCase()))
+        );
+        // Return selected fields for the assets
+        return JSON.stringify(results.map(r => ({
+            id: r.id || r.assetId, // Use assetId if id is not present
+            name: r.name,
+            type: r.type,
+            description: r.description
+        })));
+    }
+    return JSON.stringify([]);
+}
+
+async function create_image_asset_tool(prompt, projectId) {
+    console.log(`Executing create_image_asset_tool for project ${projectId} with prompt: "${prompt}"`);
+    const imageUrl = `http://example.com/generated_images/${Date.now()}.jpg`; // Simulated image URL
+    const assetId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const newAsset = {
+        assetId: assetId,
+        name: `Generated Image: ${prompt.substring(0, 30)}...`,
+        type: 'image',
+        url: imageUrl,
+        prompt: prompt,
+        createdAt: new Date(),
+        // Ensure other fields like description, tags are initialized if needed by your model/UI
+        description: `AI generated image based on prompt: ${prompt}`,
+        tags: ['generated', 'image', 'ai']
+    };
+
+    const project = global.dataStore.findProjectById(projectId);
+    if (project) {
+        if (!project.assets) {
+            project.assets = [];
+        }
+        project.assets.push(newAsset);
+        global.dataStore.updateProjectById(projectId, { assets: project.assets }); // Update the project
+        return JSON.stringify({
+            asset_id: newAsset.assetId,
+            image_url: newAsset.url,
+            name: newAsset.name,
+            message: 'Image asset created and added to project.'
+        });
+    } else {
+        return JSON.stringify({ error: 'Project not found, cannot save image asset.' });
+    }
+}
+
+async function create_video_asset_tool(prompt, projectId) {
+    console.log(`Executing create_video_asset_tool for project ${projectId} with prompt: "${prompt}"`);
+    const videoUrl = `http://example.com/generated_videos/${Date.now()}.mp4`; // Simulated video URL
+    const assetId = `vid_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const newAsset = {
+        assetId: assetId,
+        name: `Generated Video: ${prompt.substring(0, 30)}...`,
+        type: 'video',
+        url: videoUrl,
+        prompt: prompt,
+        createdAt: new Date(),
+        description: `AI generated video based on prompt: ${prompt}`,
+        tags: ['generated', 'video', 'ai']
+    };
+
+    const project = global.dataStore.findProjectById(projectId);
+    if (project) {
+        if (!project.assets) {
+            project.assets = [];
+        }
+        project.assets.push(newAsset);
+        global.dataStore.updateProjectById(projectId, { assets: project.assets }); // Update the project
+        return JSON.stringify({
+            asset_id: newAsset.assetId,
+            video_url: newAsset.url,
+            name: newAsset.name,
+            message: 'Video asset created and added to project.'
+        });
+    } else {
+        return JSON.stringify({ error: 'Project not found, cannot save video asset.' });
+    }
+}
+
+// --- Tool Execution Dispatcher ---
+async function executeTool(toolName, toolArguments, projectId) {
+    console.log(`Agent: executeTool dispatcher for ${toolName}, args: `, toolArguments);
+    switch (toolName) {
+        case 'semantic_search_assets':
+            // Ensure query argument is provided, default to empty string if not
+            const query = toolArguments && toolArguments.query ? toolArguments.query : "";
+            return await perform_semantic_search_assets_tool(query, projectId);
+        case 'create_image_asset':
+            const imagePrompt = toolArguments && toolArguments.prompt ? toolArguments.prompt : "Unspecified image prompt";
+            return await create_image_asset_tool(imagePrompt, projectId);
+        case 'create_video_asset':
+            const videoPrompt = toolArguments && toolArguments.prompt ? toolArguments.prompt : "Unspecified video prompt";
+            return await create_video_asset_tool(videoPrompt, projectId);
+        default:
+            console.error(`Agent: Unknown tool name in executeTool dispatcher: ${toolName}`);
+            return JSON.stringify({ error: `Tool '${toolName}' is not recognized by the executeTool dispatcher.` });
+    }
+}
 
 /**
  * Gets the agent's response.
@@ -60,36 +162,113 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
     const currentStep = objective.plan.steps[currentStepIndex];
     console.log(`Agent: Executing step ${currentStepIndex + 1}: ${currentStep}`);
 
-    // Call the new service function to execute the step
+    // Call the service function to execute the step (might return text or tool_call)
     const stepExecutionResult = await geminiService.executePlanStep(currentStep, objective.chatHistory, projectAssets);
 
-    objective.plan.currentStepIndex = currentStepIndex + 1;
-    // Note: chatHistory for the objective is not updated with stepExecutionResult here.
-    // This would typically be handled by appending user message (step) and agent response (stepExecutionResult)
-    // to chatHistory before this call if we want to persist the execution interaction.
-    // For now, following the subtask's direct instructions.
+    let finalMessageForStep;
+
+    if (stepExecutionResult && typeof stepExecutionResult === 'object' && stepExecutionResult.tool_call) {
+        const toolCall = stepExecutionResult.tool_call;
+        console.log(`Agent: Gemini requested tool call: ${toolCall.name}`, toolCall.arguments);
+
+        const toolSchema = getToolSchema(toolCall.name);
+        if (!toolSchema) {
+            console.error(`Agent: Unknown tool requested: ${toolCall.name}`);
+            finalMessageForStep = `Error: The agent tried to use an unknown tool: ${toolCall.name}.`;
+            // Update chat history with this error
+            objective.chatHistory.push({ speaker: 'system', content: `Error: Tool ${toolCall.name} not found.` });
+        } else {
+            // TODO: Add argument validation against toolSchema.parameters here in a future step.
+
+            const toolOutput = await executeTool(toolCall.name, toolCall.arguments, objective.projectId);
+            console.log(`Agent: Tool ${toolCall.name} executed. Output:`, toolOutput);
+
+            // Add tool call and tool output to chat history for context
+            // This simple string representation can be improved with structured messages later.
+            objective.chatHistory.push({
+                speaker: 'system', // Or 'tool_executor'
+                content: `Called tool ${toolCall.name} with arguments ${JSON.stringify(toolCall.arguments)}. Output: ${toolOutput}`
+            });
+
+            // Send tool output back to Gemini for summarization/final response for the step
+            const contextForGemini = `The tool ${toolCall.name} was called with arguments ${JSON.stringify(toolCall.arguments)} and returned the following output: ${toolOutput}. Based on this, what is the result or summary for the original step: '${currentStep}'? Please provide a concise textual response for the user.`;
+
+            const geminiResponseAfterTool = await geminiService.fetchGeminiResponse(contextForGemini, objective.chatHistory, projectAssets);
+
+            if (typeof geminiResponseAfterTool === 'object' && geminiResponseAfterTool.tool_call) {
+                console.error("Agent: Gemini requested another tool call immediately after a tool execution. This is not yet supported in this flow.");
+                finalMessageForStep = "Error: Agent tried to chain tool calls in a way that's not yet supported.";
+                objective.chatHistory.push({ speaker: 'system', content: finalMessageForStep });
+            } else if (typeof geminiResponseAfterTool === 'string') {
+                finalMessageForStep = geminiResponseAfterTool;
+                // Add Gemini's summary to chat history as the agent's response for the step
+                objective.chatHistory.push({ speaker: 'agent', content: finalMessageForStep });
+            } else {
+                 console.error("Agent: Unexpected response type from Gemini after tool execution:", geminiResponseAfterTool);
+                 finalMessageForStep = "Error: Agent received an unexpected internal response after tool execution.";
+                 objective.chatHistory.push({ speaker: 'system', content: finalMessageForStep });
+            }
+        }
+    } else if (typeof stepExecutionResult === 'string') {
+        // Gemini provided a direct response for the step, no tool call needed.
+        finalMessageForStep = stepExecutionResult;
+        // Add Gemini's direct response to chat history
+        objective.chatHistory.push({ speaker: 'agent', content: finalMessageForStep });
+    } else {
+        console.error("Agent: Unexpected response type from executePlanStep:", stepExecutionResult);
+        finalMessageForStep = "Error: Agent received an unexpected internal response while processing the step.";
+        objective.chatHistory.push({ speaker: 'system', content: finalMessageForStep });
+    }
+
+    // Update objective's plan and chat history in dataStore
+    objective.plan.currentStepIndex = currentStepIndex + 1; // Increment step index
+    objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress'; // Update status if all steps done
+
     dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
 
+    if (objective.plan.status === 'completed' && objective.plan.currentStepIndex >= objective.plan.steps.length) {
+         // If the plan just got completed by this step.
+         // The 'finalMessageForStep' is the message for the *last step's execution*.
+         // We should also add the "All plan steps completed!" message or ensure the client handles this.
+         // For now, let's return the message for the last step, and rely on the client to check planStatus.
+         // Or, we could prioritize the "All completed" message if the step execution also completed the plan.
+         // Let's return a specific object for completion here.
+        console.log(`Agent: All plan steps completed for objective ${objectiveId}.`);
+        // The finalMessageForStep for the *last* step is still relevant.
+        // We can add it to the chat history, but the primary message to UI should be completion.
+        // For now, let's ensure the client response reflects completion primarily.
+        // The problem is the `message` field. Let's make it the finalMessageForStep for now,
+        // and the client can use planStatus to show "All completed".
+        return {
+            message: 'All plan steps completed! Last step result: ' + finalMessageForStep, // Or just "All plan steps completed!"
+            currentStep: currentStepIndex, // Index of the step just processed
+            stepDescription: currentStep,
+            planStatus: 'completed'
+        };
+    }
+
     return {
-      message: stepExecutionResult,
-      currentStep: currentStepIndex, // Return the index of the step just processed
+      message: finalMessageForStep,
+      currentStep: currentStepIndex, // Index of the step just processed
       stepDescription: currentStep,
       planStatus: 'in_progress'
     };
-  } else if (objective.plan.status === 'approved' && currentStepIndex >= objective.plan.steps.length) {
-    // All steps are completed
-    console.log(`Agent: All plan steps completed for objective ${objectiveId}.`);
-    objective.plan.status = 'completed';
+  } else if (objective.plan.status === 'completed' || (objective.plan.status === 'approved' && currentStepIndex >= objective.plan.steps.length)) {
+    // This case handles when the plan was already completed, or if it was 'approved' but had no steps / currentStepIndex was already at/past length.
+    // If it just got completed by the block above, that return takes precedence.
+    console.log(`Agent: Plan is already marked as completed or no more steps. Objective ID: ${objectiveId}.`);
+    objective.plan.status = 'completed'; // Ensure status is 'completed'
     dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
 
     return {
-      message: 'All plan steps completed!',
+      message: 'All plan steps completed!', // General message for this state
       planStatus: 'completed'
     };
   }
 
-  // If plan is 'completed' or any other state, and not executing a step, rely on Gemini for conversational response.
-  console.log(`Agent: Plan status is '${objective.plan.status}'. No steps to execute, or execution finished. Calling Gemini service for conversational response.`);
+  // Fallback for conversational response if plan isn't actively being executed by the logic above.
+  // This also covers cases where plan status might be 'approved' but currentStepIndex is out of bounds initially.
+  console.log(`Agent: Plan status is '${objective.plan.status}', or step execution block not entered. Proceeding with conversational response.`);
   try {
     // projectAssets are already fetched above
     const response = await geminiService.fetchGeminiResponse(userInput, chatHistory, projectAssets);
