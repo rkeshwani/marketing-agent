@@ -20,6 +20,14 @@ class Project {
         this.tiktokUserID = null;
         this.tiktokPermissions = [];
 
+        // LinkedIn fields
+        this.linkedinAccessToken = null;
+        this.linkedinUserID = null;
+        this.linkedinUserFirstName = null;
+        this.linkedinUserLastName = null;
+        this.linkedinUserEmail = null;
+        this.linkedinPermissions = [];
+
         // Google Drive fields
         this.googleDriveFolderId = null;
         this.googleDriveAccessToken = null;

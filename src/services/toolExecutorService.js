@@ -10,6 +10,7 @@ const fsSync = require('fs'); // For createWriteStream and existsSync
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const linkedinService = require('./linkedinService'); // Added for LinkedIn
 
 
 // Note: The following functions rely on global.dataStore being available,
@@ -382,7 +383,31 @@ module.exports = {
     execute_tiktok_create_post,
     execute_google_ads_create_campaign_from_config,
     execute_google_ads_create_ad_group_from_config,
-    execute_google_ads_create_ad_from_config
+    execute_google_ads_create_ad_from_config,
+    execute_post_to_linkedin // Added LinkedIn post execution
 };
+
+// --- LinkedIn Tool Function ---
+async function execute_post_to_linkedin(params, projectId) {
+    console.log(`Executing post_to_linkedin for project ${projectId}`, params);
+    const { accessToken, userId, content } = params;
+
+    if (!accessToken || !userId || !content) {
+        return JSON.stringify({ error: "Missing accessToken, userId, or content for posting to LinkedIn." });
+    }
+
+    try {
+        const result = await linkedinService.postToLinkedIn(accessToken, userId, content);
+        if (result.success) {
+            return JSON.stringify({ success: true, message: "Successfully posted to LinkedIn.", data: result.data });
+        } else {
+            // This case might not be hit if postToLinkedIn throws an error for non-success
+            return JSON.stringify({ error: result.error || "Failed to post to LinkedIn.", details: result.data });
+        }
+    } catch (error) {
+        console.error(`Error in execute_post_to_linkedin for project ${projectId}:`, error.message);
+        return JSON.stringify({ error: `Failed to post to LinkedIn: ${error.message}` });
+    }
+}
 
 [end of src/services/toolExecutorService.js]

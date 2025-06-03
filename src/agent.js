@@ -34,6 +34,18 @@ async function executeTool(toolName, toolArguments, projectId) {
             return await toolExecutorService.execute_facebook_create_post(toolArguments, projectId);
         case 'tiktok_create_post':
             return await toolExecutorService.execute_tiktok_create_post(toolArguments, projectId);
+        case 'post_to_linkedin': {
+            const project = global.dataStore.findProjectById(projectId);
+            if (!project || !project.linkedinAccessToken || !project.linkedinUserID) {
+                return JSON.stringify({ error: "LinkedIn account not connected or credentials missing for this project." });
+            }
+            const params = {
+                accessToken: project.linkedinAccessToken,
+                userId: project.linkedinUserID, // This should be the URN format, e.g., "urn:li:person:USER_ID"
+                content: toolArguments.content
+            };
+            return await toolExecutorService.execute_post_to_linkedin(params, projectId);
+        }
 
         // Google Ads Scaffold Tools
         case 'google_ads_create_campaign_scaffold': {

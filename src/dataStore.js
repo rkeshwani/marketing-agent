@@ -18,6 +18,14 @@ function addProject(projectData) {
     newProject.tiktokUserID = projectData.tiktokUserID || null;
     newProject.tiktokPermissions = projectData.tiktokPermissions || [];
 
+    // Assign LinkedIn fields
+    newProject.linkedinAccessToken = projectData.linkedinAccessToken || null;
+    newProject.linkedinUserID = projectData.linkedinUserID || null;
+    newProject.linkedinUserFirstName = projectData.linkedinUserFirstName || null;
+    newProject.linkedinUserLastName = projectData.linkedinUserLastName || null;
+    newProject.linkedinUserEmail = projectData.linkedinUserEmail || null;
+    newProject.linkedinPermissions = projectData.linkedinPermissions || [];
+
     // Assign Google Drive and asset-related fields
     newProject.googleDriveFolderId = projectData.googleDriveFolderId || null;
     newProject.googleDriveAccessToken = projectData.googleDriveAccessToken || null;
@@ -54,6 +62,14 @@ function updateProjectById(projectId, updateData) {
         if (updateData.tiktokAccessToken !== undefined) project.tiktokAccessToken = updateData.tiktokAccessToken;
         if (updateData.tiktokUserID !== undefined) project.tiktokUserID = updateData.tiktokUserID;
         if (updateData.tiktokPermissions !== undefined) project.tiktokPermissions = updateData.tiktokPermissions;
+
+        // Update LinkedIn fields if provided
+        if (updateData.linkedinAccessToken !== undefined) project.linkedinAccessToken = updateData.linkedinAccessToken;
+        if (updateData.linkedinUserID !== undefined) project.linkedinUserID = updateData.linkedinUserID;
+        if (updateData.linkedinUserFirstName !== undefined) project.linkedinUserFirstName = updateData.linkedinUserFirstName;
+        if (updateData.linkedinUserLastName !== undefined) project.linkedinUserLastName = updateData.linkedinUserLastName;
+        if (updateData.linkedinUserEmail !== undefined) project.linkedinUserEmail = updateData.linkedinUserEmail;
+        if (updateData.linkedinPermissions !== undefined) project.linkedinPermissions = updateData.linkedinPermissions;
 
         // Update Google Drive and asset-related fields if provided
         if (updateData.googleDriveFolderId !== undefined) project.googleDriveFolderId = updateData.googleDriveFolderId;
