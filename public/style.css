@@ -195,3 +195,26 @@ footer {
     color: #777;
     font-size: 0.9em;
 }
+
+/* Notification Styles */
+#user-notification {
+    padding: 15px;
+    margin-bottom: 20px; /* Space between notification and header/content below */
+    border-radius: 5px;
+    text-align: center;
+    font-weight: bold;
+    opacity: 1;
+    transition: opacity 0.5s ease-in-out; /* For fade out */
+}
+
+.notification-success {
+    background-color: #d4edda; /* Light green */
+    color: #155724; /* Dark green */
+    border: 1px solid #c3e6cb;
+}
+
+.notification-error {
+    background-color: #f8d7da; /* Light red */
+    color: #721c24; /* Dark red */
+    border: 1px solid #f5c6cb;
+}

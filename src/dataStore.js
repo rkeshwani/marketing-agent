@@ -3,9 +3,23 @@ const projects = [];
 const objectives = [];
 
 // --- Project Functions ---
-function addProject(project) {
-    projects.push(project);
-    return project;
+function addProject(projectData) {
+    // Assuming projectData contains name, description, and optionally the new fields
+    const newProject = new (require('./models/Project'))(projectData.name, projectData.description);
+
+    // Assign new fields if they are provided in projectData
+    newProject.facebookUserAccessToken = projectData.facebookUserAccessToken || null;
+    newProject.facebookUserID = projectData.facebookUserID || null;
+    newProject.facebookSelectedPageID = projectData.facebookSelectedPageID || null;
+    newProject.facebookPageName = projectData.facebookPageName || null; // Added
+    newProject.facebookPageAccessToken = projectData.facebookPageAccessToken || null;
+    newProject.facebookPermissions = projectData.facebookPermissions || [];
+    newProject.tiktokAccessToken = projectData.tiktokAccessToken || null;
+    newProject.tiktokUserID = projectData.tiktokUserID || null;
+    newProject.tiktokPermissions = projectData.tiktokPermissions || [];
+
+    projects.push(newProject);
+    return newProject;
 }
 
 function getAllProjects() {
@@ -16,11 +30,25 @@ function findProjectById(projectId) {
     return projects.find(p => p.id === projectId);
 }
 
-function updateProjectById(projectId, name, description) {
+function updateProjectById(projectId, updateData) {
     const project = findProjectById(projectId);
     if (project) {
-        project.name = name !== undefined ? name : project.name;
-        project.description = description !== undefined ? description : project.description;
+        project.name = updateData.name !== undefined ? updateData.name : project.name;
+        project.description = updateData.description !== undefined ? updateData.description : project.description;
+
+        // Update Facebook fields if provided
+        if (updateData.facebookUserAccessToken !== undefined) project.facebookUserAccessToken = updateData.facebookUserAccessToken;
+        if (updateData.facebookUserID !== undefined) project.facebookUserID = updateData.facebookUserID;
+        if (updateData.facebookSelectedPageID !== undefined) project.facebookSelectedPageID = updateData.facebookSelectedPageID;
+        if (updateData.facebookPageName !== undefined) project.facebookPageName = updateData.facebookPageName; // Added
+        if (updateData.facebookPageAccessToken !== undefined) project.facebookPageAccessToken = updateData.facebookPageAccessToken;
+        if (updateData.facebookPermissions !== undefined) project.facebookPermissions = updateData.facebookPermissions;
+
+        // Update TikTok fields if provided
+        if (updateData.tiktokAccessToken !== undefined) project.tiktokAccessToken = updateData.tiktokAccessToken;
+        if (updateData.tiktokUserID !== undefined) project.tiktokUserID = updateData.tiktokUserID;
+        if (updateData.tiktokPermissions !== undefined) project.tiktokPermissions = updateData.tiktokPermissions;
+
         project.updatedAt = new Date();
         return project;
     }
