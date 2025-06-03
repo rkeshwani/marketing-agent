@@ -1,47 +1,91 @@
 const assert = require('node:assert');
-const agent = require('../src/agent'); // Assuming agent.js can access mockDataStore (see note below)
-const geminiService = require('../src/services/geminiService');
+const expect = require('expect'); // Using expect for Jest-like assertions
+
+// Mock 'node-fetch'
+let mockFetchResponses = {};
+jest.mock('node-fetch', () => jest.fn((url, options) => {
+    if (mockFetchResponses[url]) {
+        const mockFn = mockFetchResponses[url];
+        // delete mockFetchResponses[url]; // Uncomment if mocks are strictly one-time
+        return Promise.resolve(mockFn(options));
+    }
+    return Promise.resolve({
+        ok: false,
+        status: 404,
+        text: () => Promise.resolve('Mocked Fetch: URL Not Found'),
+        json: () => Promise.resolve({ error: 'Mocked Fetch: URL Not Found' })
+    });
+}));
+const fetch = require('node-fetch'); // fetch is now the jest.fn()
+
+// Mock 'config'
+jest.mock('../src/config/config', () => ({
+    GEMINI_API_KEY: 'test-gemini-key',
+    GEMINI_API_ENDPOINT: 'https://test.geminiapi.com/v1/text/generate', // Adjusted for clarity
+    GEMINI_IMAGE_API_KEY: 'test-gemini-image-key',
+    GEMINI_IMAGE_API_ENDPOINT: 'https://test.geminiimageapi.com/v1/images/generate',
+    VEO_API_KEY: 'test-veo-key',
+    VEO_API_ENDPOINT: 'https://test.veoapi.com/v2/videos/generate',
+    EMBEDDING_API_KEY: 'test-embedding-key',
+    EMBEDDING_API_ENDPOINT: 'https://test.embeddingapi.com/v1/embed',
+    NODE_ENV: 'test',
+    PORT: '3001'
+}));
+const config = require('../src/config/config'); // Import after mock
+
+// Mock 'vectorService'
+let recordedEmbeddingCalls = [];
+let recordedAddVectorCalls = [];
+jest.mock('../src/services/vectorService', () => ({
+    generateEmbedding: jest.fn(async (text) => {
+        recordedEmbeddingCalls.push(text);
+        const mockVector = Array(10).fill(0).map((_, i) => (text.length + i) * 0.01);
+        return { vector: mockVector };
+    }),
+    addAssetVector: jest.fn(async (projectId, assetId, vector) => {
+        recordedAddVectorCalls.push({ projectId, assetId, vector });
+    }),
+    findSimilarAssets: jest.fn(async (projectId, queryVector, topN) => {
+        // This mock will return the first asset's ID if assets exist in mockObjective for that projectId
+        if (mockObjective && mockObjective.projectId === projectId && mockObjective.assets && mockObjective.assets.length > 0) {
+            // Ensure the asset has an assetId property for this mock to work as expected by tests
+            if (mockObjective.assets[0].assetId || mockObjective.assets[0].id) {
+                 return [mockObjective.assets[0].assetId || mockObjective.assets[0].id];
+            }
+        }
+        return [];
+    })
+}));
+const vectorService = require('../src/services/vectorService'); // Import after mock
+
+const agent = require('../src/agent');
+const geminiService = require('../src/services/geminiService'); // Still need to mock parts of this
 
 // NOTE: This test suite assumes that agent.js can be made to use the mockDataStore defined herein.
 // For true unit testing, agent.js would need to support dependency injection for dataStore
 // or a mocking framework like proxyquire/jest would be used to properly mock '../src/dataStore'.
 
-// --- Test Suite for Agent ---
-
 console.log('Running tests for src/agent.js...');
 
-// Mock services and data store
 let mockObjective;
-let mockDataStore;
-let originalFetchGeminiResponse;
-let originalGeneratePlanForObjective;
-let originalExecutePlanStep;
-let mockExecutePlanStepResponse; // Used to control executePlanStep mock behavior per test
+let originalFetchGeminiResponse; // For geminiService.fetchGeminiResponse (text)
+let originalExecutePlanStep;    // For geminiService.executePlanStep
+let mockExecutePlanStepResponse;
 
 function setup() {
     mockObjective = {
         id: 'test-objective-123',
         title: 'Test Objective',
         brief: 'A test objective.',
-        projectId: 'test-project-456', // Ensure projectId is present
-        plan: {
-            steps: ['Step 1: Do A', 'Step 2: Do B'],
-            status: 'approved',
-            questions: [],
-            currentStepIndex: 0
-        },
+        projectId: 'test-project-456',
+        plan: { steps: ['Step 1', 'Step 2'], status: 'approved', questions: [], currentStepIndex: 0 },
         chatHistory: [],
-        assets: [] // Initialize assets for tools that modify them
+        assets: []
     };
-
-    // Reset mock response for executePlanStep for each test
-    mockExecutePlanStepResponse = 'Default step response from mockExecutePlanStep';
+    mockExecutePlanStepResponse = 'Default step response'; // Reset for each test
 
     global.dataStore = {
-        findObjectiveById: (objectiveId) => {
-            if (objectiveId === mockObjective.id) return mockObjective;
-            return null;
-        },
+        findObjectiveById: (objectiveId) => (objectiveId === mockObjective.id ? mockObjective : null),
         updateObjectiveById: (objectiveId, title, brief, plan, chatHistory) => {
             if (objectiveId === mockObjective.id) {
                 mockObjective.title = title !== undefined ? title : mockObjective.title;
@@ -52,64 +96,52 @@ function setup() {
             }
             return null;
         },
-        findProjectById: (projectId) => {
-            if (projectId === mockObjective.projectId) {
-                // Return a project structure that includes the shared assets array
-                return {
-                    id: mockObjective.projectId,
-                    name: 'Test Project',
-                    assets: mockObjective.assets // Crucial: use the assets from mockObjective
-                };
-            }
-            return null;
-        },
+        findProjectById: (projectId) => (projectId === mockObjective.projectId ? { id: mockObjective.projectId, name: 'Test Project', assets: mockObjective.assets } : null),
         updateProjectById: (projectId, updateData) => {
             if (projectId === mockObjective.projectId) {
-                if (updateData.assets !== undefined) {
-                    mockObjective.assets = updateData.assets; // Directly update mockObjective's assets
-                }
-                // Add other fields to update if necessary for other tests
-                return { ...mockObjective, ...updateData }; // Return a conceptual updated project
+                if (updateData.assets !== undefined) mockObjective.assets = updateData.assets;
+                return { ...mockObjective, ...updateData }; // Simplified project object
             }
             return null;
         }
     };
 
+    // Keep direct mock for geminiService as it's more about controlling agent's interaction with it
     originalFetchGeminiResponse = geminiService.fetchGeminiResponse;
-    originalGeneratePlanForObjective = geminiService.generatePlanForObjective;
     originalExecutePlanStep = geminiService.executePlanStep;
 
     geminiService.fetchGeminiResponse = async (userInput, chatHistory, projectAssets) => {
-        console.log(`Mocked geminiService.fetchGeminiResponse called with: "${userInput}"`);
-        if (userInput === "error_test") {
-            throw new Error("Simulated service error");
-        }
-        if (userInput.startsWith('The tool')) { // For summarizing tool output
-            return `Gemini summary based on tool output: ${userInput.substring(0, 200)}...`;
-        }
+        if (userInput === "error_test") throw new Error("Simulated service error");
+        if (userInput.startsWith('The tool')) return `Gemini summary based on tool output: ${userInput.substring(0, 200)}...`;
         return `Mocked conversational response to: ${userInput}`;
     };
+    geminiService.executePlanStep = async (stepDescription, chatHistory, projectAssets) => mockExecutePlanStepResponse;
 
-    geminiService.generatePlanForObjective = async (objective, projectAssets) => {
-        return { planSteps: ['Generated Step 1', 'Generated Step 2'], questions: ['Q1?'] };
-    };
-
-    geminiService.executePlanStep = async (stepDescription, chatHistory, projectAssets) => {
-        console.log(`Mocked geminiService.executePlanStep called for step: "${stepDescription}", will return:`, mockExecutePlanStepResponse);
-        return mockExecutePlanStepResponse; // Use the configurable mock response
-    };
-
-    console.log('Mocks setup complete.');
+    // Clear Jest mocks for fetch and vectorService before each test run
+    fetch.mockClear();
+    mockFetchResponses = {};
+    vectorService.generateEmbedding.mockClear();
+    vectorService.addAssetVector.mockClear();
+    vectorService.findSimilarAssets.mockClear();
+    recordedEmbeddingCalls = [];
+    recordedAddVectorCalls = [];
 }
 
 function teardown() {
     geminiService.fetchGeminiResponse = originalFetchGeminiResponse;
-    geminiService.generatePlanForObjective = originalGeneratePlanForObjective;
     geminiService.executePlanStep = originalExecutePlanStep;
     mockObjective = null;
     global.dataStore = undefined;
-    mockExecutePlanStepResponse = null; // Reset configurable response
-    console.log('Mocks torn down.');
+    mockExecutePlanStepResponse = null;
+
+    // Clear mocks and responses
+    fetch.mockClear();
+    mockFetchResponses = {};
+    vectorService.generateEmbedding.mockClear();
+    vectorService.addAssetVector.mockClear();
+    vectorService.findSimilarAssets.mockClear();
+    recordedEmbeddingCalls = [];
+    recordedAddVectorCalls = [];
 }
 
 async function testAgentReturnsServiceResponseForConversation() {
@@ -123,6 +155,7 @@ async function testAgentReturnsServiceResponseForConversation() {
     console.log('Test Passed: Agent returned conversational service response.');
     teardown();
 }
+// ... (rest of the existing test functions remain, but may need expect() syntax for consistency later)
 
 async function testAgentHandlesServiceErrorInConversation() {
     console.log('Test: agent should handle service error gracefully during conversation...');
@@ -151,7 +184,7 @@ async function testPlanExecutionFlow_DirectResponses() {
 
     mockExecutePlanStepResponse = 'Executed Step B directly.';
     const response2 = await agent.getAgentResponse('User input for step B', [], mockObjective.id);
-    assert.deepStrictEqual(response2, { message: 'Executed Step B directly.', currentStep: 1, stepDescription: 'Step B', planStatus: 'in_progress' }, 'Test Failed: Step 2 direct response incorrect'); // This was planStatus: 'completed' before, fixed.
+    assert.deepStrictEqual(response2, { message: 'Executed Step B directly.', currentStep: 1, stepDescription: 'Step B', planStatus: 'in_progress' }, 'Test Failed: Step 2 direct response incorrect');
     assert.strictEqual(mockObjective.plan.currentStepIndex, 2, 'Test Failed: currentStepIndex not updated after step 2 (direct)');
     assert.strictEqual(mockObjective.plan.status, 'completed', 'Test Failed: Plan status not completed after step 2 (direct)');
     assert.strictEqual(mockObjective.chatHistory.length, 2, "Chat history length incorrect after step 2");
@@ -159,7 +192,6 @@ async function testPlanExecutionFlow_DirectResponses() {
 
 
     const response3 = await agent.getAgentResponse('User input after steps', [], mockObjective.id);
-    // The message for completion after the last step has specific format
     assert.deepStrictEqual(response3, { message: 'All plan steps completed! Last step result: Executed Step B directly.', currentStep: 1, stepDescription: 'Step B', planStatus: 'completed' }, 'Test Failed: Plan completion response incorrect (direct)');
     assert.strictEqual(mockObjective.plan.status, 'completed', 'Test Failed: Plan status not set to completed (direct)');
     console.log('Test Passed: testPlanExecutionFlow_DirectResponses.');
@@ -206,21 +238,23 @@ async function testAgentExecutesSemanticSearchTool() {
     console.log('Test: Agent executes semantic_search_assets tool...');
     setup();
     mockObjective.plan = { steps: ['Search for dogs'], status: 'approved', currentStepIndex: 0, questions: [] };
-    mockObjective.assets = [ // Ensure assets are on mockObjective directly
-        { assetId: '1', name: 'cat picture', description: 'a tabby cat', type: 'image' },
-        { assetId: '2', name: 'dog park video', description: 'dogs playing fetch', type: 'video' }
+    mockObjective.assets = [
+        { assetId: 'asset_dog_1', name: 'dog park video', description: 'dogs playing fetch', type: 'video', url: 'http://example.com/dog.mp4' },
+        { assetId: 'asset_cat_1', name: 'cat picture', description: 'a tabby cat', type: 'image', url: 'http://example.com/cat.jpg' }
     ];
     mockExecutePlanStepResponse = { tool_call: { name: "semantic_search_assets", arguments: { query: "dogs" } } };
 
     const response = await agent.getAgentResponse('User input for search', [], mockObjective.id);
 
-    assert(response.message.startsWith("Gemini summary based on tool output:"), 'Test Failed: Response message should start with Gemini summary.');
-    const expectedToolOutput = JSON.stringify([{ id: '2', name: 'dog park video', type: 'video', description: 'dogs playing fetch' }]);
-    assert(response.message.includes(expectedToolOutput), `Test Failed: Response message should contain tool output. Got: ${response.message}`);
-    assert.strictEqual(mockObjective.plan.currentStepIndex, 1, 'Test Failed: currentStepIndex not updated after search tool.');
-    assert.strictEqual(mockObjective.chatHistory.length, 2, 'Test Failed: Chat history length incorrect after search tool.');
-    assert(mockObjective.chatHistory[0].content.includes('semantic_search_assets'), 'Test Failed: Chat history missing tool call system message.');
-    assert(mockObjective.chatHistory[1].content.startsWith('Gemini summary based on tool output:'), 'Test Failed: Chat history missing Gemini summary.');
+    expect(response.message).toMatch(/^Gemini summary based on tool output:/);
+    const expectedToolOutput = JSON.stringify([{ id: 'asset_dog_1', name: 'dog park video', type: 'video', description: 'dogs playing fetch', url: 'http://example.com/dog.mp4' }]);
+    expect(response.message).toContain(expectedToolOutput);
+    expect(mockObjective.plan.currentStepIndex).toBe(1);
+    expect(mockObjective.chatHistory.length).toBe(2);
+    expect(mockObjective.chatHistory[0].content).toContain('semantic_search_assets');
+    expect(mockObjective.chatHistory[1].content).toMatch(/^Gemini summary based on tool output:/);
+    expect(vectorService.generateEmbedding).toHaveBeenCalledWith("dogs");
+    expect(vectorService.findSimilarAssets).toHaveBeenCalledWith(mockObjective.projectId, expect.any(Array), 5);
     console.log('Test Passed: Agent executes semantic_search_assets tool.');
     teardown();
 }
@@ -229,21 +263,58 @@ async function testAgentExecutesCreateImageAssetTool() {
     console.log('Test: Agent executes create_image_asset tool...');
     setup();
     mockObjective.plan = { steps: ['Create image of a sunset'], status: 'approved', currentStepIndex: 0, questions: [] };
-    mockObjective.assets = []; // Start with no assets
+    mockObjective.assets = [];
     const promptForTool = "a beautiful sunset";
+    const expectedImageUrl = 'http://mocked-api.com/generated_image.jpg';
+
     mockExecutePlanStepResponse = { tool_call: { name: "create_image_asset", arguments: { prompt: promptForTool } } };
+    mockFetchResponses[config.GEMINI_IMAGE_API_ENDPOINT] = (options) => {
+        expect(JSON.parse(options.body).prompt).toBe(promptForTool);
+        expect(options.headers.Authorization).toBe(`Bearer ${config.GEMINI_IMAGE_API_KEY}`);
+        return {
+            ok: true,
+            status: 200,
+            json: async () => ({ imageUrl: expectedImageUrl })
+        };
+    };
 
     const response = await agent.getAgentResponse('User input for image', [], mockObjective.id);
 
-    assert(response.message.startsWith("Gemini summary based on tool output:"), 'Test Failed: Response message should start with Gemini summary for image tool.');
-    assert.strictEqual(mockObjective.assets.length, 1, 'Test Failed: Number of assets should be 1 after image creation.');
-    assert.strictEqual(mockObjective.assets[0].type, 'image', 'Test Failed: Asset type should be image.');
-    assert.strictEqual(mockObjective.assets[0].prompt, promptForTool, 'Test Failed: Asset prompt does not match.');
-    assert(mockObjective.assets[0].name.includes(promptForTool.substring(0,30)), 'Test Failed: Asset name does not match prompt.');
-    assert.strictEqual(mockObjective.plan.currentStepIndex, 1, 'Test Failed: currentStepIndex not updated after image tool.');
+    expect(response.message).toMatch(/^Gemini summary based on tool output:/);
+    expect(fetch).toHaveBeenCalledWith(config.GEMINI_IMAGE_API_ENDPOINT, expect.anything());
+    expect(mockObjective.assets.length).toBe(1);
+    expect(mockObjective.assets[0].type).toBe('image');
+    expect(mockObjective.assets[0].prompt).toBe(promptForTool);
+    expect(mockObjective.assets[0].url).toBe(expectedImageUrl);
+    expect(mockObjective.plan.currentStepIndex).toBe(1);
+    expect(vectorService.generateEmbedding).toHaveBeenCalled();
+    expect(vectorService.addAssetVector).toHaveBeenCalledWith(mockObjective.projectId, mockObjective.assets[0].assetId, expect.any(Array));
     console.log('Test Passed: Agent executes create_image_asset tool.');
     teardown();
 }
+
+async function testAgentHandlesImageGenerationApiError() {
+    console.log('Test: Agent handles image generation API error...');
+    setup();
+    mockObjective.plan = { steps: ['Create image of a cat'], status: 'approved', currentStepIndex: 0, questions: [] };
+    mockExecutePlanStepResponse = { tool_call: { name: "create_image_asset", arguments: { prompt: "a grumpy cat" } } };
+    mockFetchResponses[config.GEMINI_IMAGE_API_ENDPOINT] = (options) => ({
+        ok: false,
+        status: 500,
+        text: async () => 'Internal Server Error from mock',
+        json: async () => ({ error: 'Internal Server Error from mock' })
+    });
+
+    const response = await agent.getAgentResponse('User input for image error', [], mockObjective.id);
+
+    expect(response.message).toMatch(/^Gemini summary based on tool output:/);
+    expect(response.message).toContain("Failed to generate image: API Error 500");
+    expect(mockObjective.assets.length).toBe(0);
+    expect(mockObjective.plan.currentStepIndex).toBe(1);
+    console.log('Test Passed: Agent handles image generation API error.');
+    teardown();
+}
+
 
 async function testAgentHandlesUnknownToolNameFromGemini() {
     console.log('Test: Agent handles unknown tool name from Gemini...');
@@ -253,10 +324,9 @@ async function testAgentHandlesUnknownToolNameFromGemini() {
 
     const response = await agent.getAgentResponse('User input for unknown tool', [], mockObjective.id);
 
-    assert(response.message.includes("Error: The agent tried to use an unknown tool: non_existent_tool"), 'Test Failed: Incorrect error message for unknown tool.');
-    assert.strictEqual(mockObjective.plan.currentStepIndex, 1, 'Test Failed: currentStepIndex should increment even after unknown tool error.');
-    // Check chat history for the error message
-    assert(mockObjective.chatHistory.some(m => m.speaker === 'system' && m.content.includes('Error: Tool non_existent_tool not found.')), 'Test Failed: System error message not found in chat history for unknown tool.');
+    expect(response.message).toContain("Error: The agent tried to use an unknown tool: non_existent_tool");
+    expect(mockObjective.plan.currentStepIndex).toBe(1);
+    expect(mockObjective.chatHistory.some(m => m.speaker === 'system' && m.content.includes('Error: Tool non_existent_tool not found.'))).toBe(true);
     console.log('Test Passed: Agent handles unknown tool name from Gemini.');
     teardown();
 }
@@ -269,9 +339,9 @@ async function testStepCompletesDirectlyWithoutToolCall() {
 
     const response = await agent.getAgentResponse('User input for simple step', [], mockObjective.id);
 
-    assert.strictEqual(response.message, 'This step was simple and completed directly by Gemini.', 'Test Failed: Incorrect message for direct completion.');
-    assert.strictEqual(mockObjective.plan.currentStepIndex, 1, 'Test Failed: currentStepIndex not updated for direct completion.');
-    assert(mockObjective.chatHistory.some(m => m.speaker === 'agent' && m.content === mockExecutePlanStepResponse), 'Test Failed: Direct response not in chat history.');
+    expect(response.message).toBe('This step was simple and completed directly by Gemini.');
+    expect(mockObjective.plan.currentStepIndex).toBe(1);
+    expect(mockObjective.chatHistory.some(m => m.speaker === 'agent' && m.content === mockExecutePlanStepResponse)).toBe(true);
     console.log('Test Passed: Step completes directly without tool call.');
     teardown();
 }
@@ -281,7 +351,6 @@ async function runTests() {
   try {
     await testAgentReturnsServiceResponseForConversation();
     await testAgentHandlesServiceErrorInConversation();
-    // Renamed old testPlanExecutionFlow to avoid confusion
     await testPlanExecutionFlow_DirectResponses();
     await testPlanStartsExecutionFromCorrectIndex_DirectResponse();
     await testPlanAlreadyCompletedReturnsAppropriateMessage();
@@ -290,6 +359,7 @@ async function runTests() {
     // New tool execution tests
     await testAgentExecutesSemanticSearchTool();
     await testAgentExecutesCreateImageAssetTool();
+    await testAgentHandlesImageGenerationApiError(); // Added
     await testAgentHandlesUnknownToolNameFromGemini();
     await testStepCompletesDirectlyWithoutToolCall();
 

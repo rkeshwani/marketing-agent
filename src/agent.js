@@ -1,109 +1,27 @@
 // Import services
 const geminiService = require('./services/geminiService');
 const { getToolSchema } = require('./services/toolRegistryService');
+// const vectorService = require('./services/vectorService'); // No longer needed directly in agent.js
+// const fetch = require('node-fetch'); // No longer needed directly in agent.js
+// const config = require('../config/config'); // No longer needed directly in agent.js
+const toolExecutorService = require('./services/toolExecutorService'); // Import the new service
 
 // --- Specific Tool Implementations ---
-
-async function perform_semantic_search_assets_tool(query, projectId) {
-    console.log(`Executing semantic_search_assets_tool for project ${projectId} with query: ${query}`);
-    const project = global.dataStore.findProjectById(projectId);
-    if (project && project.assets && project.assets.length > 0) {
-        const results = project.assets.filter(asset =>
-            (asset.name && asset.name.toLowerCase().includes(query.toLowerCase())) ||
-            (asset.description && asset.description.toLowerCase().includes(query.toLowerCase()))
-        );
-        // Return selected fields for the assets
-        return JSON.stringify(results.map(r => ({
-            id: r.id || r.assetId, // Use assetId if id is not present
-            name: r.name,
-            type: r.type,
-            description: r.description
-        })));
-    }
-    return JSON.stringify([]);
-}
-
-async function create_image_asset_tool(prompt, projectId) {
-    console.log(`Executing create_image_asset_tool for project ${projectId} with prompt: "${prompt}"`);
-    const imageUrl = `http://example.com/generated_images/${Date.now()}.jpg`; // Simulated image URL
-    const assetId = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    const newAsset = {
-        assetId: assetId,
-        name: `Generated Image: ${prompt.substring(0, 30)}...`,
-        type: 'image',
-        url: imageUrl,
-        prompt: prompt,
-        createdAt: new Date(),
-        // Ensure other fields like description, tags are initialized if needed by your model/UI
-        description: `AI generated image based on prompt: ${prompt}`,
-        tags: ['generated', 'image', 'ai']
-    };
-
-    const project = global.dataStore.findProjectById(projectId);
-    if (project) {
-        if (!project.assets) {
-            project.assets = [];
-        }
-        project.assets.push(newAsset);
-        global.dataStore.updateProjectById(projectId, { assets: project.assets }); // Update the project
-        return JSON.stringify({
-            asset_id: newAsset.assetId,
-            image_url: newAsset.url,
-            name: newAsset.name,
-            message: 'Image asset created and added to project.'
-        });
-    } else {
-        return JSON.stringify({ error: 'Project not found, cannot save image asset.' });
-    }
-}
-
-async function create_video_asset_tool(prompt, projectId) {
-    console.log(`Executing create_video_asset_tool for project ${projectId} with prompt: "${prompt}"`);
-    const videoUrl = `http://example.com/generated_videos/${Date.now()}.mp4`; // Simulated video URL
-    const assetId = `vid_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-    const newAsset = {
-        assetId: assetId,
-        name: `Generated Video: ${prompt.substring(0, 30)}...`,
-        type: 'video',
-        url: videoUrl,
-        prompt: prompt,
-        createdAt: new Date(),
-        description: `AI generated video based on prompt: ${prompt}`,
-        tags: ['generated', 'video', 'ai']
-    };
-
-    const project = global.dataStore.findProjectById(projectId);
-    if (project) {
-        if (!project.assets) {
-            project.assets = [];
-        }
-        project.assets.push(newAsset);
-        global.dataStore.updateProjectById(projectId, { assets: project.assets }); // Update the project
-        return JSON.stringify({
-            asset_id: newAsset.assetId,
-            video_url: newAsset.url,
-            name: newAsset.name,
-            message: 'Video asset created and added to project.'
-        });
-    } else {
-        return JSON.stringify({ error: 'Project not found, cannot save video asset.' });
-    }
-}
+// These are now moved to toolExecutorService.js
 
 // --- Tool Execution Dispatcher ---
 async function executeTool(toolName, toolArguments, projectId) {
     console.log(`Agent: executeTool dispatcher for ${toolName}, args: `, toolArguments);
     switch (toolName) {
         case 'semantic_search_assets':
-            // Ensure query argument is provided, default to empty string if not
             const query = toolArguments && toolArguments.query ? toolArguments.query : "";
-            return await perform_semantic_search_assets_tool(query, projectId);
+            return await toolExecutorService.perform_semantic_search_assets_tool(query, projectId);
         case 'create_image_asset':
             const imagePrompt = toolArguments && toolArguments.prompt ? toolArguments.prompt : "Unspecified image prompt";
-            return await create_image_asset_tool(imagePrompt, projectId);
+            return await toolExecutorService.create_image_asset_tool(imagePrompt, projectId);
         case 'create_video_asset':
             const videoPrompt = toolArguments && toolArguments.prompt ? toolArguments.prompt : "Unspecified video prompt";
-            return await create_video_asset_tool(videoPrompt, projectId);
+            return await toolExecutorService.create_video_asset_tool(videoPrompt, projectId);
         default:
             console.error(`Agent: Unknown tool name in executeTool dispatcher: ${toolName}`);
             return JSON.stringify({ error: `Tool '${toolName}' is not recognized by the executeTool dispatcher.` });
