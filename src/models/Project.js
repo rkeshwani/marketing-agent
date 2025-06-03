@@ -19,6 +19,12 @@ class Project {
         this.tiktokAccessToken = null;
         this.tiktokUserID = null;
         this.tiktokPermissions = [];
+
+        // Google Drive fields
+        this.googleDriveFolderId = null;
+        this.googleDriveAccessToken = null;
+        this.googleDriveRefreshToken = null;
+        this.assets = []; // This will be an array of asset objects
     }
 }
 

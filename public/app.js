@@ -45,6 +45,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const approvePlanBtn = document.getElementById('approve-plan-btn');
     // const rejectPlanBtn = document.getElementById('reject-plan-btn'); // If added
 
+    // Asset Management DOM Elements
+    const assetsSection = document.getElementById('assets-section');
+    const selectedProjectNameForAssetsElement = document.getElementById('selected-project-name-for-assets');
+    const uploadAssetForm = document.getElementById('upload-asset-form');
+    const assetFileInput = document.getElementById('asset-file-input');
+    const assetListContainer = document.getElementById('asset-list-container');
+    const uploadStatusMessage = document.getElementById('upload-status-message');
+    const backToProjectsFromAssetsButton = document.getElementById('back-to-projects-from-assets-button');
+
+
     // --- State ---
     let projects = [];
     let objectives = [];
@@ -82,6 +92,7 @@ document.addEventListener('DOMContentLoaded', () => {
         projectsSection.style.display = 'block';
         objectivesSection.style.display = 'none';
         chatSection.style.display = 'none';
+        if (assetsSection) assetsSection.style.display = 'none'; // Hide assets section
         selectedProjectId = null;
         selectedObjectiveId = null;
         objectives = [];
@@ -97,6 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
         projectsSection.style.display = 'none';
         objectivesSection.style.display = 'block';
         chatSection.style.display = 'none';
+        if (assetsSection) assetsSection.style.display = 'none'; // Hide assets section
         selectedObjectiveId = null;
         currentChatHistory = [];
         clearContainer(chatOutput);
@@ -117,6 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
         projectsSection.style.display = 'none';
         objectivesSection.style.display = 'none';
         chatSection.style.display = 'block';
+        if (assetsSection) assetsSection.style.display = 'none'; // Hide assets section
         userInputElement.value = ''; // Clear input field
         clearContainer(chatOutput); // Clear previous chat messages before showing section
         planDisplaySection.style.display = 'none'; // Initially hide plan
@@ -289,9 +302,49 @@ document.addEventListener('DOMContentLoaded', () => {
                 selectedProjectId = project.id;
                 showObjectivesSection();
             });
+
+            // Google Drive Connect Button / Status
+            if (project.googleDriveFolderId) {
+                const gDriveStatus = document.createElement('p');
+                gDriveStatus.classList.add('gdrive-connected-status');
+                gDriveStatus.textContent = 'Google Drive Connected';
+                li.appendChild(gDriveStatus);
+            } else {
+                const connectGDriveBtn = document.createElement('button');
+                connectGDriveBtn.textContent = 'Connect Google Drive';
+                connectGDriveBtn.classList.add('connect-gdrive-btn');
+                connectGDriveBtn.dataset.projectId = project.id;
+                li.appendChild(connectGDriveBtn);
+            }
+
+            // Manage Assets Button
+            const manageAssetsBtn = document.createElement('button');
+            manageAssetsBtn.textContent = 'Manage Assets';
+            manageAssetsBtn.classList.add('manage-assets-btn');
+            manageAssetsBtn.dataset.projectId = project.id;
+            manageAssetsBtn.dataset.projectName = project.name;
+            li.appendChild(manageAssetsBtn);
+
             ul.appendChild(li);
         });
         projectListContainer.appendChild(ul);
+
+        // Delegated event listeners for project list buttons
+        ul.addEventListener('click', function(event) {
+            if (event.target.classList.contains('connect-gdrive-btn')) {
+                const projectId = event.target.dataset.projectId;
+                // Potentially store pending project info if needed, but for GDrive connect,
+                // projectId is the main piece of info for the backend.
+                window.location.href = `/auth/google/initiate?projectId=${projectId}`;
+            } else if (event.target.classList.contains('manage-assets-btn')) {
+                selectedProjectId = event.target.dataset.projectId;
+                if (selectedProjectNameForAssetsElement) {
+                    selectedProjectNameForAssetsElement.textContent = event.target.dataset.projectName;
+                }
+                showAssetsSection();
+            }
+            // Note: The direct li click for objectives is still handled by the listener attached to each li individually.
+        });
     }
 
     async function handleCreateProjectSubmit(event) {
@@ -498,6 +551,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (createObjectiveForm) createObjectiveForm.addEventListener('submit', handleCreateObjectiveSubmit);
     if (backToProjectsButton) backToProjectsButton.addEventListener('click', showProjectsSection);
     if (backToObjectivesButton) backToObjectivesButton.addEventListener('click', showObjectivesSection);
+    if (backToProjectsFromAssetsButton) backToProjectsFromAssetsButton.addEventListener('click', showProjectsSection);
+
 
     if (approvePlanBtn) {
         approvePlanBtn.addEventListener('click', async () => {
@@ -624,4 +679,136 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     console.log('PWA client app.js fully integrated for Project, Objective, and Chat Management.');
+
+    // --- Asset Management Functions ---
+    function showAssetsSection() {
+        if (!assetsSection) return;
+        projectsSection.style.display = 'none';
+        objectivesSection.style.display = 'none';
+        chatSection.style.display = 'none';
+        assetsSection.style.display = 'block';
+
+        if (selectedProjectId) {
+            // Project name is already set by the 'Manage Assets' button click handler
+            fetchAndRenderAssets(selectedProjectId);
+        } else {
+            displayError("No project selected. Please go back and select a project.", assetListContainer, true);
+            showProjectsSection();
+        }
+        if (uploadAssetForm) uploadAssetForm.reset();
+        if (uploadStatusMessage) uploadStatusMessage.textContent = '';
+    }
+
+    async function fetchAndRenderAssets(projectId) {
+        if (!assetListContainer) return;
+        clearContainer(assetListContainer);
+        assetListContainer.innerHTML = '<p>Loading assets...</p>';
+
+        try {
+            const response = await fetch(`/api/projects/${projectId}/assets`);
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: `Failed to fetch assets: ${response.statusText}` }));
+                throw new Error(errorData.error);
+            }
+            const assets = await response.json();
+            clearContainer(assetListContainer);
+
+            if (assets.length === 0) {
+                assetListContainer.innerHTML = '<p>No assets uploaded yet.</p>';
+                return;
+            }
+
+            const ul = document.createElement('ul');
+            ul.classList.add('asset-list');
+            assets.forEach(asset => {
+                const li = document.createElement('li');
+                li.classList.add('asset-item');
+                li.innerHTML = `
+                    <strong>${asset.name}</strong>
+                    <p>Type: ${asset.type}</p>
+                    <p><small>Drive ID: ${asset.googleDriveFileId}</small></p>
+                    <p><small>Asset ID: ${asset.assetId}</small></p>
+                `;
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.classList.add('delete-asset-btn');
+                deleteBtn.dataset.assetId = asset.assetId;
+                li.appendChild(deleteBtn);
+                ul.appendChild(li);
+            });
+            assetListContainer.appendChild(ul);
+        } catch (error) {
+            displayError(`Error fetching assets: ${error.message}`, assetListContainer);
+        }
+    }
+
+    if (uploadAssetForm) {
+        uploadAssetForm.addEventListener('submit', async function(event) {
+            event.preventDefault();
+            if (!selectedProjectId) {
+                if (uploadStatusMessage) uploadStatusMessage.textContent = 'Error: No project selected.';
+                return;
+            }
+            const file = assetFileInput.files[0];
+            if (!file) {
+                if (uploadStatusMessage) uploadStatusMessage.textContent = 'Error: No file selected.';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('assetFile', file);
+
+            if (uploadStatusMessage) uploadStatusMessage.textContent = 'Uploading...';
+
+            try {
+                const response = await fetch(`/api/projects/${selectedProjectId}/assets/upload`, {
+                    method: 'POST',
+                    body: formData, // FormData sets Content-Type automatically for multipart/form-data
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: `Upload failed: ${response.statusText}` }));
+                    throw new Error(errorData.error);
+                }
+                const newAsset = await response.json();
+                if (uploadStatusMessage) uploadStatusMessage.textContent = `Upload successful: ${newAsset.name}`;
+                assetFileInput.value = ''; // Clear file input
+                fetchAndRenderAssets(selectedProjectId); // Refresh asset list
+            } catch (error) {
+                if (uploadStatusMessage) uploadStatusMessage.textContent = `Upload failed: ${error.message}`;
+            } finally {
+                setTimeout(() => {
+                    if (uploadStatusMessage) uploadStatusMessage.textContent = '';
+                }, 5000);
+            }
+        });
+    }
+
+    if (assetListContainer) {
+        assetListContainer.addEventListener('click', async function(event) {
+            if (event.target.classList.contains('delete-asset-btn')) {
+                const assetId = event.target.dataset.assetId;
+                if (!selectedProjectId || !assetId) {
+                    alert('Error: Project ID or Asset ID missing.');
+                    return;
+                }
+                if (confirm(`Are you sure you want to delete asset ${assetId}? This action cannot be undone.`)) {
+                    try {
+                        const response = await fetch(`/api/projects/${selectedProjectId}/assets/${assetId}`, {
+                            method: 'DELETE',
+                        });
+                        if (!response.ok) {
+                            const errorData = await response.json().catch(() => ({ error: `Failed to delete asset: ${response.statusText}` }));
+                            throw new Error(errorData.error);
+                        }
+                        // Deletion successful, refresh the asset list
+                        fetchAndRenderAssets(selectedProjectId);
+                        alert('Asset deleted successfully.');
+                    } catch (error) {
+                        alert(`Error deleting asset: ${error.message}`);
+                    }
+                }
+            }
+        });
+    }
 });

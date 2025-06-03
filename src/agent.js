@@ -50,8 +50,10 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
   console.log(`Agent: Plan approved for objective ${objectiveId}. Calling Gemini service.`);
   try {
     // Optional Enhancement: Pass objective.plan.steps to fetchGeminiResponse for more context.
-    // For now, just userInput and chatHistory.
-    const response = await geminiService.fetchGeminiResponse(userInput, chatHistory);
+    const project = dataStore.findProjectById(objective.projectId);
+    const projectAssets = project ? project.assets : [];
+
+    const response = await geminiService.fetchGeminiResponse(userInput, chatHistory, projectAssets);
     return response;
   } catch (error) {
     console.error('Agent: Error fetching response from Gemini service:', error);
@@ -73,7 +75,9 @@ async function initializeAgent(objectiveId) {
     }
 
     // Call the new service function to generate the plan
-    const { planSteps, questions } = await geminiService.generatePlanForObjective(objective);
+    const project = dataStore.findProjectById(objective.projectId);
+    const projectAssets = project ? project.assets : [];
+    const { planSteps, questions } = await geminiService.generatePlanForObjective(objective, projectAssets);
 
     // Update the objective's plan
     objective.plan.steps = planSteps;
