@@ -9,6 +9,7 @@ class Objective {
             steps: [],
             status: 'pending_approval',
             questions: [],
+            currentStepIndex: 0,
         };
         this.chatHistory = []; // Initialize with an empty array
         this.createdAt = new Date();

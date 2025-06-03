@@ -138,7 +138,24 @@ module.exports = {
   generatePlanForObjective, // Export the new function
   generateProjectContextQuestions,
   structureProjectContextAnswers,
+  executePlanStep, // Export the new function
 };
+
+// --- New Function: executePlanStep ---
+/**
+ * Executes a single step of a plan by calling fetchGeminiResponse.
+ *
+ * @param {string} stepDescription The description of the plan step to execute.
+ * @param {Array<Object>} chatHistory The current chat history.
+ * @param {Array<Object>} projectAssets Assets related to the project (optional).
+ * @returns {Promise<string>} A promise that resolves to the API response for the step.
+ */
+async function executePlanStep(stepDescription, chatHistory, projectAssets = []) {
+  console.log('GeminiService (executePlanStep): Received step for execution -', stepDescription);
+  // This function simply leverages fetchGeminiResponse for the execution of a step.
+  // In a more complex system, this might involve different types of actions based on step content.
+  return fetchGeminiResponse(stepDescription, chatHistory, projectAssets);
+}
 
 // --- New Function: generateProjectContextQuestions ---
 

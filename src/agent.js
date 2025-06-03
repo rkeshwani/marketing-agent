@@ -46,22 +46,61 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
     return message;
   }
 
-  // Plan is approved, proceed to get response from Gemini
-  console.log(`Agent: Plan approved for objective ${objectiveId}. Calling Gemini service.`);
-  try {
-    // Optional Enhancement: Pass objective.plan.steps to fetchGeminiResponse for more context.
-    const project = dataStore.findProjectById(objective.projectId);
-    const projectAssets = project ? project.assets : [];
+  // Plan is approved, commence execution or continue conversation
+  console.log(`Agent: Plan approved for objective ${objectiveId}.`);
 
+  // Fetch project assets early as they might be needed for step execution or conversational fallback
+  const project = dataStore.findProjectById(objective.projectId);
+  const projectAssets = project ? project.assets : [];
+
+  // Execute next step if plan is in progress
+  let currentStepIndex = objective.plan.currentStepIndex === undefined ? 0 : objective.plan.currentStepIndex;
+
+  if (currentStepIndex < objective.plan.steps.length) {
+    const currentStep = objective.plan.steps[currentStepIndex];
+    console.log(`Agent: Executing step ${currentStepIndex + 1}: ${currentStep}`);
+
+    // Call the new service function to execute the step
+    const stepExecutionResult = await geminiService.executePlanStep(currentStep, objective.chatHistory, projectAssets);
+
+    objective.plan.currentStepIndex = currentStepIndex + 1;
+    // Note: chatHistory for the objective is not updated with stepExecutionResult here.
+    // This would typically be handled by appending user message (step) and agent response (stepExecutionResult)
+    // to chatHistory before this call if we want to persist the execution interaction.
+    // For now, following the subtask's direct instructions.
+    dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
+
+    return {
+      message: stepExecutionResult,
+      currentStep: currentStepIndex, // Return the index of the step just processed
+      stepDescription: currentStep,
+      planStatus: 'in_progress'
+    };
+  } else if (objective.plan.status === 'approved' && currentStepIndex >= objective.plan.steps.length) {
+    // All steps are completed
+    console.log(`Agent: All plan steps completed for objective ${objectiveId}.`);
+    objective.plan.status = 'completed';
+    dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
+
+    return {
+      message: 'All plan steps completed!',
+      planStatus: 'completed'
+    };
+  }
+
+  // If plan is 'completed' or any other state, and not executing a step, rely on Gemini for conversational response.
+  console.log(`Agent: Plan status is '${objective.plan.status}'. No steps to execute, or execution finished. Calling Gemini service for conversational response.`);
+  try {
+    // projectAssets are already fetched above
     const response = await geminiService.fetchGeminiResponse(userInput, chatHistory, projectAssets);
-    return response;
+    return response; // This will be a string for conversational turn
   } catch (error) {
     console.error('Agent: Error fetching response from Gemini service:', error);
     return "Agent: I'm sorry, I encountered an error trying to get a response.";
   }
 }
 
-// src/agent.js // This comment is redundant, dataStore is already imported above.
+// src/agent.js
 /**
  * Initializes the agent for a given objective by generating a plan.
  * @param {string} objectiveId The ID of the objective to initialize.
@@ -85,8 +124,8 @@ async function initializeAgent(objectiveId) {
     objective.plan.status = 'pending_approval'; // Or 'generated_pending_review'
 
     // Save the updated objective
-    // The dataStore.updateObjectiveById function was modified to accept 'plan' as the fourth argument.
-    const updatedObjective = dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan);
+    // Ensuring consistency with the 5-argument version used elsewhere.
+    const updatedObjective = dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
     if (!updatedObjective) {
         // This case should ideally not be reached if findObjectiveById succeeded and dataStore is consistent
         throw new Error(`Failed to update objective with ID ${objectiveId}.`);

@@ -164,14 +164,59 @@ document.addEventListener('DOMContentLoaded', () => {
         clearContainer(planStepsList);
         clearContainer(planQuestionsList);
 
-        plan.steps = plan.steps || []; // Ensure steps is an array
-        plan.questions = plan.questions || []; // Ensure questions is an array
+        plan.steps = plan.steps || [];
+        plan.questions = plan.questions || [];
+        plan.currentStepIndex = plan.currentStepIndex === undefined ? 0 : Number(plan.currentStepIndex); // Ensure it's a number, default to 0
 
-        plan.steps.forEach(step => {
+        // First, clear any existing current/completed classes from all items
+        // This is a bit inefficient if done here, better to do it before applying new ones.
+        // Moved this logic to be more targeted below.
+
+        plan.steps.forEach((step, index) => {
             const li = document.createElement('li');
             li.textContent = step;
+            li.id = `plan-step-${index}`; // Assign unique ID
+            li.classList.add('plan-step-item'); // Add common class
             planStepsList.appendChild(li);
         });
+
+        // Apply highlighting based on status and currentStepIndex
+        const allStepItems = planStepsList.querySelectorAll('.plan-step-item');
+        allStepItems.forEach(item => {
+            item.classList.remove('current-step', 'completed-step');
+        });
+
+        if (plan.status === 'in_progress') {
+            for (let i = 0; i < plan.currentStepIndex; i++) { // Steps before current are completed
+                const stepLi = document.getElementById(`plan-step-${i}`);
+                if (stepLi) stepLi.classList.add('completed-step');
+            }
+            // Current step to be executed (currentStepIndex is 0-based index of the NEXT step)
+            // So, if currentStepIndex is 0, it means step 0 is the current one.
+            // If currentStepIndex is 1, step 0 is done, step 1 is current.
+            const currentHighlightIndex = plan.currentStepIndex; // The step that is now current
+            if (currentHighlightIndex < plan.steps.length) {
+                 const currentStepLi = document.getElementById(`plan-step-${currentHighlightIndex}`);
+                 if (currentStepLi) currentStepLi.classList.add('current-step');
+            }
+            planStatusMessage.textContent = 'Plan execution in progress.';
+            approvePlanBtn.style.display = 'none';
+            chatInputArea.style.display = 'flex'; // Keep chat active
+
+        } else if (plan.status === 'completed') {
+            allStepItems.forEach(item => {
+                item.classList.add('completed-step');
+                item.classList.remove('current-step'); // Ensure no current-step if completed
+            });
+            planStatusMessage.textContent = 'Plan completed successfully!';
+            approvePlanBtn.style.display = 'none';
+            // Optionally, disable or change chat input
+            // userInputElement.placeholder = "All plan steps completed.";
+            // userInputElement.disabled = true;
+            // sendButton.disabled = true;
+            chatInputArea.style.display = 'flex'; // Or hide it: chatInputArea.style.display = 'none';
+        }
+
 
         if (plan.questions.length > 0) {
             plan.questions.forEach(question => {
@@ -194,21 +239,31 @@ document.addEventListener('DOMContentLoaded', () => {
             clearContainer(chatOutput); // Clear any "loading chat" messages if plan is pending
             addMessageToUI('agent', "Please review the proposed plan above. Approve it to start working on this objective.");
         } else if (plan.status === 'approved') {
-            planStatusMessage.textContent = 'Plan approved! You can now proceed with the objective.';
+            planStatusMessage.textContent = 'Plan approved! Ready to start or continue.';
             approvePlanBtn.style.display = 'none';
             chatInputArea.style.display = 'flex';
             planDisplaySection.style.display = 'block';
-            // Fetch chat history only after plan is confirmed approved
-            fetchChatHistory(selectedObjectiveId);
-        } else { // No plan, or other statuses
-            planStatusMessage.textContent = 'No active plan.';
-            planDisplaySection.style.display = 'none';
-            chatInputArea.style.display = 'none';
-            // Potentially try to initialize if no plan status is known
-            // This case might be hit if plan is null/undefined
+            fetchChatHistory(selectedObjectiveId); // Load chat history for approved plan
+            // Highlighting for 'approved' status (likely first step is current if index is 0)
+            // This is now handled by the 'in_progress' logic if currentStepIndex > 0,
+            // or first step highlighted if currentStepIndex is 0 and status becomes 'in_progress' upon first action.
+            // If plan is just 'approved' and currentStepIndex is 0, renderPlan will highlight step 0 if we treat 'approved' as 'in_progress' visually for step 0.
+            // For simplicity, let's assume 'approved' means step 0 is about to be current or is current.
+            // The following logic is slightly redundant due to the generic 'in_progress' handling but ensures step 0 is highlighted if index is 0.
+            const allStepItems = planStepsList.querySelectorAll('.plan-step-item');
+            allStepItems.forEach(item => item.classList.remove('current-step', 'completed-step')); // Clear previous
+            if (plan.currentStepIndex < plan.steps.length) {
+                 const currentStepLi = document.getElementById(`plan-step-${plan.currentStepIndex}`);
+                 if (currentStepLi) currentStepLi.classList.add('current-step');
+            }
+
+        } else { // No plan, or other statuses not explicitly handled for display (e.g. 'user_modified', 'error')
+            planStatusMessage.textContent = 'Plan status: ' + (plan.status || 'Not available');
+            planDisplaySection.style.display = 'block'; // Still show plan section for consistency
+            chatInputArea.style.display = 'none'; // Hide chat if plan status is not conducive
+            approvePlanBtn.style.display = 'none'; // Hide approve button for other statuses
             if (!plan.status && selectedObjectiveId) {
-                 // This path is more explicitly handled in fetchAndDisplayPlan's 404 case
-                 addMessageToUI('agent', "No plan information available. Attempting to initialize...");
+                 addMessageToUI('agent', "No plan information or status. Attempting to initialize...");
             }
         }
     }
@@ -220,14 +275,12 @@ document.addEventListener('DOMContentLoaded', () => {
             addMessageToUI('agent', 'Cannot display plan: Objective ID is missing.');
             return;
         }
+        addMessageToUI('agent', 'Loading objective details and plan...'); // Indicate loading
         try {
-            // In a real app, this would be: const planResponse = await fetch(`/api/objectives/${objectiveId}/plan`);
-            // Simulating fetch for objective details which include the plan
             const objectiveResponse = await fetch(`/api/objectives/${objectiveId}`);
-
             if (!objectiveResponse.ok) {
                 if (objectiveResponse.status === 404) {
-                    addMessageToUI('agent', 'Objective not found, cannot retrieve or initialize plan.');
+                    addMessageToUI('agent', 'Objective not found. Cannot retrieve or initialize plan.');
                     planDisplaySection.style.display = 'none';
                     chatInputArea.style.display = 'none';
                     return;
@@ -235,43 +288,73 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(`Failed to fetch objective details: ${objectiveResponse.statusText}`);
             }
             const objectiveData = await objectiveResponse.json();
+            clearContainer(chatOutput); // Clear "Loading..." message
 
-            if (objectiveData && objectiveData.plan) {
-                 if (objectiveData.plan.status === 'pending_approval' || objectiveData.plan.status === 'approved') {
-                    renderPlan(objectiveData.plan);
-                } else if (!objectiveData.plan.steps || objectiveData.plan.steps.length === 0) {
-                    // Plan exists but is empty or in an unknown state, try to initialize
-                    addMessageToUI('agent', 'Current plan is empty or status is unclear. Attempting to initialize a new plan...');
-                    const initResponse = await fetch(`/api/objectives/${objectiveId}/initialize-agent`, { method: 'POST' });
-                    if (!initResponse.ok) throw new Error(`Failed to initialize plan: ${initResponse.statusText}`);
-                    const newObjectiveData = await initResponse.json(); // Expecting the full objective with the plan
-                    renderPlan(newObjectiveData.plan);
-                } else {
-                    // Plan exists but status is not one we explicitly handle for plan display (e.g. might be user modified)
-                    // For now, just render it. Might need more states later.
-                    renderPlan(objectiveData.plan);
-                }
+            // Update local objectives array
+            const objectiveIndex = objectives.findIndex(o => o.id === objectiveId);
+            if (objectiveIndex !== -1) {
+                objectives[objectiveIndex] = { ...objectives[objectiveIndex], ...objectiveData };
             } else {
-                // No plan object within the objective, or objectiveData is malformed - try to initialize.
-                addMessageToUI('agent', 'No plan found for this objective. Attempting to initialize a new plan...');
-                const initResponse = await fetch(`/api/objectives/${objectiveId}/initialize-agent`, { method: 'POST' });
-                if (!initResponse.ok) throw new Error(`Failed to initialize plan after finding no plan: ${initResponse.statusText}`);
-                const newObjectiveData = await initResponse.json();
-                renderPlan(newObjectiveData.plan);
+                objectives.push(objectiveData); // Should ideally exist if we clicked on it
             }
 
+            const currentObjective = objectives[objectiveIndex !== -1 ? objectiveIndex : objectives.length -1];
+
+
+            if (currentObjective && currentObjective.plan) {
+                // Check if plan needs initialization based on status or content
+                if (currentObjective.plan.status === 'pending_approval' ||
+                    currentObjective.plan.status === 'approved' ||
+                    currentObjective.plan.status === 'in_progress' ||
+                    currentObjective.plan.status === 'completed') {
+                    renderPlan(currentObjective.plan);
+                    if (currentObjective.plan.status === 'approved' || currentObjective.plan.status === 'in_progress') {
+                        fetchChatHistory(objectiveId); // Also fetch chat history
+                    } else if (currentObjective.plan.status === 'pending_approval') {
+                         addMessageToUI('agent', "Please review the proposed plan above. Approve it to start working on this objective.");
+                    }
+                } else if (!currentObjective.plan.steps || currentObjective.plan.steps.length === 0) {
+                    addMessageToUI('agent', 'Plan is empty or status is unclear. Attempting to initialize...');
+                    const initResponse = await fetch(`/api/objectives/${objectiveId}/initialize-agent`, { method: 'POST' });
+                    if (!initResponse.ok) throw new Error(`Failed to initialize plan: ${initResponse.statusText}`);
+                    const newObjectiveData = await initResponse.json();
+
+                    // Update local objective with new plan
+                    if (objectiveIndex !== -1) objectives[objectiveIndex] = newObjectiveData; else objectives[objectives.length-1] = newObjectiveData;
+                    renderPlan(newObjectiveData.plan);
+                    if (newObjectiveData.plan.status === 'pending_approval') {
+                         addMessageToUI('agent', "Please review the newly initialized plan.");
+                    }
+                } else {
+                    // Plan exists but status is not one we explicitly handle for special UI changes (e.g. might be user modified)
+                    renderPlan(currentObjective.plan);
+                     fetchChatHistory(objectiveId); // Fetch chat for other valid plan states
+                }
+            } else {
+                addMessageToUI('agent', 'No plan found. Attempting to initialize a new plan...');
+                const initResponse = await fetch(`/api/objectives/${objectiveId}/initialize-agent`, { method: 'POST' });
+                if (!initResponse.ok) throw new Error(`Failed to initialize plan: ${initResponse.statusText}`);
+                const newObjectiveData = await initResponse.json();
+
+                if (objectiveIndex !== -1) objectives[objectiveIndex] = newObjectiveData; else objectives[objectives.length-1] = newObjectiveData;
+                renderPlan(newObjectiveData.plan);
+                if (newObjectiveData.plan.status === 'pending_approval') {
+                    addMessageToUI('agent', "Please review the newly initialized plan.");
+                }
+            }
         } catch (error) {
             console.error('Error in fetchAndDisplayPlan:', error);
+            clearContainer(chatOutput); // Clear "Loading..."
             const errorDisplayArea = planDisplaySection.style.display === 'none' ? chatOutput : planStatusMessage;
-            displayError(error.message, errorDisplayArea);
-            planDisplaySection.style.display = 'block'; // Ensure plan section is visible to show error
-            planStatusMessage.textContent = `Error: ${error.message}`; // show error in plan status
-            chatInputArea.style.display = 'none';
-            approvePlanBtn.style.display = 'none';
+            if (errorDisplayArea) displayError(error.message, errorDisplayArea); else addMessageToUI('agent', error.message);
+
+            if(planDisplaySection) planDisplaySection.style.display = 'block';
+            if(planStatusMessage) planStatusMessage.textContent = `Error: ${error.message}`;
+            if(chatInputArea) chatInputArea.style.display = 'none';
+            if(approvePlanBtn) approvePlanBtn.style.display = 'none';
             addMessageToUI('agent', `Could not load or initialize a plan: ${error.message}`);
         }
     }
-
 
     // --- Project Functions ---
     async function fetchProjects() {
@@ -698,12 +781,49 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const data = await response.json();
-            const agentResponse = data.response;
-            addMessageToUI('agent', agentResponse);
+
+            if (data.planStatus) { // Check if response indicates a plan state update
+                const objective = objectives.find(o => o.id === selectedObjectiveId);
+                if (!objective) {
+                    console.error("Objective not found in local cache for plan update.");
+                    addMessageToUI('agent', "Error: Could not find objective to update its plan status.");
+                    return;
+                }
+                if (!objective.plan) { // Ensure plan object exists
+                    objective.plan = { steps: [], questions: [], status: '', currentStepIndex: 0 };
+                }
+
+                if (data.planStatus === 'in_progress') {
+                    addMessageToUI('agent', data.message); // This is the step execution result
+                    objective.plan.status = 'in_progress';
+                    // data.currentStep is the index of the step *just processed*
+                    objective.plan.currentStepIndex = data.currentStep + 1;
+                    renderPlan(objective.plan);
+                } else if (data.planStatus === 'completed') {
+                    addMessageToUI('agent', data.message); // "All plan steps completed!"
+                    objective.plan.status = 'completed';
+                    objective.plan.currentStepIndex = objective.plan.steps.length;
+                    renderPlan(objective.plan);
+                    // Optionally, further UI changes like disabling input:
+                    // userInputElement.disabled = true;
+                    // userInputElement.placeholder = "Objective completed!";
+                    // sendButton.disabled = true;
+                } else {
+                    // Fallback for other planStatuses if any, or just treat as regular message
+                    const agentResponse = data.response || data.message || "Received an update with unhandled plan status.";
+                    addMessageToUI('agent', agentResponse);
+                }
+            } else { // Standard chat message without plan status
+                const agentResponse = data.response; // Assuming 'response' for regular chat
+                addMessageToUI('agent', agentResponse);
+            }
 
             // Optional: Add to local currentChatHistory if needed, but server is source of truth.
+            // For plan execution messages, data.message is the agent's response.
+            // For regular chat, data.response is the agent's response.
+            // const messageToStore = data.planStatus ? data.message : data.response;
             // currentChatHistory.push({ speaker: 'user', content: messageText, timestamp: new Date() });
-            // currentChatHistory.push({ speaker: 'agent', content: agentResponse, timestamp: new Date() });
+            // currentChatHistory.push({ speaker: 'agent', content: messageToStore, timestamp: new Date() });
 
         } catch (error) {
             console.error('Error sending message to server:', error);
