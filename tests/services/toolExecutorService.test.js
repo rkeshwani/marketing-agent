@@ -24,7 +24,6 @@ global.dataStore = {
         }
         return null;
     }),
-    // updateProjectById not directly used by toolExecutorService, but good to have if needed
     updateProjectById: jest.fn((projectId, updateData) => {
         if (mockProject && mockProject.id === projectId) {
             Object.assign(mockProject, updateData);
@@ -41,6 +40,9 @@ let mockConfig = {
     VEO_API_KEY: 'test-veo-key',
     VEO_API_ENDPOINT: 'https://mock.veo.video/api',
     FACEBOOK_APP_ACCESS_TOKEN: 'test-fb-app-token',
+    GOOGLE_ADS_DEVELOPER_TOKEN: 'test-gads-dev-token',
+    GOOGLE_ADS_SERVICE_ACCOUNT_KEY_PATH: './fake_service_account.json',
+    GOOGLE_ADS_LOGIN_CUSTOMER_ID: 'gads-login-customer-123',
     // Add other config vars if toolExecutorService starts using them
 };
 jest.mock('../../src/config/config', () => mockConfig, { virtual: true });
@@ -52,6 +54,13 @@ describe('Tool Executor Service Tests', () => {
         mockFetchResponses = {};
         global.fetch.mockClear();
         global.dataStore.findProjectById.mockClear();
+        // Restore any config that might be temporarily changed in a test
+        mockConfig.GOOGLE_ADS_DEVELOPER_TOKEN = 'test-gads-dev-token';
+        mockConfig.GOOGLE_ADS_SERVICE_ACCOUNT_KEY_PATH = './fake_service_account.json';
+        mockConfig.GOOGLE_ADS_LOGIN_CUSTOMER_ID = 'gads-login-customer-123';
+        mockConfig.FACEBOOK_APP_ACCESS_TOKEN = 'test-fb-app-token';
+
+
         mockProject = {
             id: 'project-123',
             name: 'Test Project',
@@ -78,7 +87,7 @@ describe('Tool Executor Service Tests', () => {
 
             const result = JSON.parse(await toolExecutorService[toolName](params, mockProject.id));
 
-            expect(global.fetch).toHaveBeenCalledWith(expectedApiUrl, undefined); // Or specific options if GET
+            expect(global.fetch).toHaveBeenCalledWith(expectedApiUrl, undefined);
             expect(result.data[0].id).toBe('post1');
         });
 
@@ -94,12 +103,11 @@ describe('Tool Executor Service Tests', () => {
         const toolName = 'execute_facebook_public_posts_search';
         it('should search public posts and return data', async () => {
             const params = { keywords: 'public query', targetPublicPageIdOrName: 'somepage' };
-            // Using app token for this mock example
             const expectedApiUrl = `https://graph.facebook.com/v18.0/${params.targetPublicPageIdOrName}/posts?fields=id,message,from,created_time&access_token=${mockConfig.FACEBOOK_APP_ACCESS_TOKEN}&q=${encodeURIComponent(params.keywords)}`;
             mockFetchResponses[expectedApiUrl] = () => ({
                 ok: true, status: 200, json: async () => ({ data: [{ id: 'pub_post_1', message: 'public post' }]})
             });
-            mockProject.facebookUserAccessToken = null; // Ensure app token path is tested
+            mockProject.facebookUserAccessToken = null;
 
             const result = JSON.parse(await toolExecutorService[toolName](params, mockProject.id));
             expect(global.fetch).toHaveBeenCalledWith(expectedApiUrl, undefined);
@@ -107,10 +115,11 @@ describe('Tool Executor Service Tests', () => {
         });
          it('should return error if no access token available', async () => {
             mockProject.facebookUserAccessToken = null;
-            mockConfig.FACEBOOK_APP_ACCESS_TOKEN = ''; // Temporarily unset for this test
+            const originalAppToken = mockConfig.FACEBOOK_APP_ACCESS_TOKEN;
+            mockConfig.FACEBOOK_APP_ACCESS_TOKEN = '';
             const result = JSON.parse(await toolExecutorService[toolName]({ keywords: 'q' }, mockProject.id));
             expect(result.error).toContain("Facebook access token (user or app) not available");
-            mockConfig.FACEBOOK_APP_ACCESS_TOKEN = 'test-fb-app-token'; // Restore
+            mockConfig.FACEBOOK_APP_ACCESS_TOKEN = originalAppToken; // Restore
         });
     });
 
@@ -120,11 +129,11 @@ describe('Tool Executor Service Tests', () => {
         it('should search TikTok posts and return data', async () => {
             const params = { keywordsOrHashtags: '#funny' };
             const expectedApiUrl = `https://api.tiktok.com/v2/research/video/query/?query=${encodeURIComponent(params.keywordsOrHashtags)}`;
-             mockFetchResponses[expectedApiUrl] = () => ({ // Note: TikTok API structure might differ
+             mockFetchResponses[expectedApiUrl] = () => ({
                 ok: true, status: 200, json: async () => ({ data: { videos: [{ video_id: 'tiktok_1' }] } })
             });
             const result = JSON.parse(await toolExecutorService[toolName](params, mockProject.id));
-            expect(global.fetch).toHaveBeenCalledWith(expectedApiUrl, undefined); // Assuming GET
+            expect(global.fetch).toHaveBeenCalledWith(expectedApiUrl, undefined);
             expect(result.data.videos[0].video_id).toBe('tiktok_1');
         });
     });
@@ -183,6 +192,88 @@ describe('Tool Executor Service Tests', () => {
             const params = { text_content: 'missing video', video_asset_id: 'nonexistentvid' };
             const result = JSON.parse(await toolExecutorService[toolName](params, mockProject.id));
             expect(result.error).toContain("Video asset nonexistentvid not found");
+        });
+    });
+
+    // --- Google Ads Create Campaign From Config ---
+    describe('execute_google_ads_create_campaign_from_config', () => {
+        const toolName = 'execute_google_ads_create_campaign_from_config';
+        const loginCustomerId = mockConfig.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+        const expectedApiUrl = `https://googleads.googleapis.com/vXX/customers/${loginCustomerId}/campaigns:mutate`;
+
+        it('should successfully create a campaign with mock API call', async () => {
+            const mockCampaignConfig = { campaignName: 'Test Campaign', campaignType: 'Search', customer_id: loginCustomerId }; // Ensure customer_id for API URL
+            const mockBudget = '$50 daily';
+            const mockApiResponse = { results: [{ resourceName: `customers/${loginCustomerId}/campaigns/mockCampaignId789` }] };
+
+            mockFetchResponses[expectedApiUrl] = (options) => {
+                expect(options.method).toBe('POST');
+                expect(options.headers['Authorization']).toBe('Bearer mock-oauth-token-for-google-ads');
+                expect(options.headers['developer-token']).toBe(mockConfig.GOOGLE_ADS_DEVELOPER_TOKEN);
+                const body = JSON.parse(options.body);
+                expect(body.campaignName).toBe(mockCampaignConfig.campaignName);
+                expect(body.budget.amount_micros).toBe(50000000); // from "$50 daily"
+                return { ok: true, status: 200, json: async () => mockApiResponse };
+            };
+
+            const result = JSON.parse(await toolExecutorService[toolName](mockCampaignConfig, mockBudget, mockProject.id));
+            expect(global.fetch).toHaveBeenCalledWith(expectedApiUrl, expect.anything());
+            expect(result.results[0].resourceName).toContain('mockCampaignId789');
+        });
+
+        it('should return API error if fetch fails', async () => {
+            const mockCampaignConfig = { campaignName: 'Test Campaign Error', customer_id: loginCustomerId };
+            mockFetchResponses[expectedApiUrl] = () => ({
+                ok: false, status: 500, text: async () => 'Internal Server Error'
+            });
+            const result = JSON.parse(await toolExecutorService[toolName](mockCampaignConfig, '$20', mockProject.id));
+            expect(result.error).toContain('Failed to execute Google Ads campaign creation.'); // Error from catch block
+        });
+
+        it('should return config error if dev token is missing', async () => {
+            const originalToken = mockConfig.GOOGLE_ADS_DEVELOPER_TOKEN;
+            mockConfig.GOOGLE_ADS_DEVELOPER_TOKEN = ''; // Temporarily unset
+            const result = JSON.parse(await toolExecutorService[toolName]({}, '$10', mockProject.id));
+            expect(result.error).toContain("Google Ads developer token or service account key path not configured.");
+            mockConfig.GOOGLE_ADS_DEVELOPER_TOKEN = originalToken; // Restore
+        });
+    });
+
+    // --- Google Ads Create Ad Group From Config ---
+    describe('execute_google_ads_create_ad_group_from_config', () => {
+        const toolName = 'execute_google_ads_create_ad_group_from_config';
+        const loginCustomerId = mockConfig.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+        const expectedApiUrl = `https://googleads.googleapis.com/vXX/customers/${loginCustomerId}/adGroups:mutate`;
+
+        it('should successfully create an ad group', async () => {
+            const mockAdGroupConfig = { adGroupName: 'Test AdGroup', campaign_id: 'campaign1', customer_id: loginCustomerId };
+            const mockApiResponse = { results: [{ resourceName: `customers/${loginCustomerId}/adGroups/mockAdGroupId456` }] };
+            mockFetchResponses[expectedApiUrl] = (options) => {
+                expect(JSON.parse(options.body).adGroupName).toBe(mockAdGroupConfig.adGroupName);
+                return { ok: true, status: 200, json: async () => mockApiResponse };
+            };
+            const result = JSON.parse(await toolExecutorService[toolName](mockAdGroupConfig, mockProject.id));
+            expect(global.fetch).toHaveBeenCalledWith(expectedApiUrl, expect.anything());
+            expect(result.results[0].resourceName).toContain('mockAdGroupId456');
+        });
+    });
+
+    // --- Google Ads Create Ad From Config ---
+    describe('execute_google_ads_create_ad_from_config', () => {
+        const toolName = 'execute_google_ads_create_ad_from_config';
+        const loginCustomerId = mockConfig.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+        const expectedApiUrl = `https://googleads.googleapis.com/vXX/customers/${loginCustomerId}/adGroupAds:mutate`;
+
+        it('should successfully create an ad', async () => {
+            const mockAdConfig = { adName: 'Test Ad', ad_group_id: 'adGroup1', customer_id: loginCustomerId };
+            const mockApiResponse = { results: [{ resourceName: `customers/${loginCustomerId}/ads/mockAdId789` }] };
+            mockFetchResponses[expectedApiUrl] = (options) => {
+                 expect(JSON.parse(options.body).adName).toBe(mockAdConfig.adName);
+                return { ok: true, status: 200, json: async () => mockApiResponse };
+            };
+            const result = JSON.parse(await toolExecutorService[toolName](mockAdConfig, mockProject.id));
+            expect(global.fetch).toHaveBeenCalledWith(expectedApiUrl, expect.anything());
+            expect(result.results[0].resourceName).toContain('mockAdId789');
         });
     });
 });

@@ -22,6 +22,8 @@ async function executeTool(toolName, toolArguments, projectId) {
         case 'create_video_asset':
             const videoPrompt = toolArguments && toolArguments.prompt ? toolArguments.prompt : "Unspecified video prompt";
             return await toolExecutorService.create_video_asset_tool(videoPrompt, projectId);
+
+        // Social Media Tools
         case 'facebook_managed_page_posts_search':
             return await toolExecutorService.execute_facebook_managed_page_posts_search(toolArguments, projectId);
         case 'facebook_public_posts_search':
@@ -32,6 +34,100 @@ async function executeTool(toolName, toolArguments, projectId) {
             return await toolExecutorService.execute_facebook_create_post(toolArguments, projectId);
         case 'tiktok_create_post':
             return await toolExecutorService.execute_tiktok_create_post(toolArguments, projectId);
+
+        // Google Ads Scaffold Tools
+        case 'google_ads_create_campaign_scaffold': {
+            console.log("Agent: Initiating google_ads_create_campaign_scaffold...");
+            const project = global.dataStore.findProjectById(projectId);
+            const projectContext = project ? project.description || project.name : "No project context available.";
+
+            const geminiPromptForConfig = `Based on the project context: "${projectContext}", and a request to create a Google Ads campaign (name suggestion: "${toolArguments.campaign_name_suggestion}", type suggestion: "${toolArguments.campaign_type_suggestion}"), generate a detailed JSON configuration object for the Google Ads API Campaign resource. Identify any critical missing information. For budget, explicitly state 'BUDGET_NEEDED'.`;
+
+            // Pass objective.chatHistory for context, projectAssets is empty for this type of call
+            const campaignConfigOrClarification = await geminiService.fetchGeminiResponse(geminiPromptForConfig, objective.chatHistory, []);
+
+            if (typeof campaignConfigOrClarification === 'object' && campaignConfigOrClarification.tool_call) {
+                 return JSON.stringify({ error: "Gemini unexpectedly tried to call another tool while generating campaign config." });
+            }
+
+            if (campaignConfigOrClarification.includes("BUDGET_NEEDED")) {
+                objective.pendingToolBudgetInquiry = {
+                    originalToolCall: { name: toolName, arguments: toolArguments, stepIndex: objective.plan.currentStepIndex }, // Store current step index
+                    generatedConfig: campaignConfigOrClarification.replace("BUDGET_NEEDED", "").trim(),
+                    projectId: projectId,
+                    objectiveId: objective.id
+                };
+                return {
+                    askUserInput: true,
+                    message: "Okay, I've drafted a campaign structure. What budget (e.g., '$50 daily' or '$1000 total') would you like to set for this campaign?",
+                };
+            }
+
+            // This is the path if BUDGET_NEEDED was NOT in the response from Gemini
+            console.log("Agent: Gemini generated campaign config (no immediate budget request from Gemini):", campaignConfigOrClarification);
+            let parsedCampaignConfig;
+            try {
+                parsedCampaignConfig = JSON.parse(campaignConfigOrClarification);
+            } catch (e) {
+                console.error("Agent: Failed to parse campaign config from Gemini:", e);
+                return JSON.stringify({ error: "Failed to understand campaign configuration from AI." });
+            }
+            // Budget for this path is not from direct user input in this turn.
+            // It's assumed to be part of parsedCampaignConfig or handled by Ads API defaults.
+            const budgetForNonInteractivePath = parsedCampaignConfig.budgetInfo || "BUDGET_NOT_INTERACTIVELY_SET_IN_THIS_STEP";
+
+            const toolApiResult = await toolExecutorService.execute_google_ads_create_campaign_from_config(
+                parsedCampaignConfig,
+                budgetForNonInteractivePath,
+                projectId
+            );
+            return toolApiResult; // This is the JSON string from the (mocked) Ads API call
+        }
+        case 'google_ads_create_ad_group_scaffold': {
+            console.log("Agent: Initiating google_ads_create_ad_group_scaffold...");
+            const project = global.dataStore.findProjectById(projectId);
+            const projectContext = project ? project.description || project.name : "No project context available.";
+            const campaignId = toolArguments.campaign_id;
+
+            const geminiPromptForAdGroupConfig = `Based on project context: "${projectContext}", for Google Ads campaign ID "${campaignId}", generate a detailed JSON configuration for an Ad Group (name suggestion: "${toolArguments.ad_group_name_suggestion}"). Include relevant keywords and bids if appropriate from the context.`;
+
+            const adGroupConfigString = await geminiService.fetchGeminiResponse(geminiPromptForAdGroupConfig, objective.chatHistory, []);
+
+            if (typeof adGroupConfigString === 'object' && adGroupConfigString.tool_call) {
+                 return JSON.stringify({ error: "Gemini unexpectedly tried to call another tool while generating ad group config." });
+            }
+
+            let parsedAdGroupConfig;
+            try {
+                parsedAdGroupConfig = JSON.parse(adGroupConfigString);
+            } catch (e) {
+                console.error("Agent: Failed to parse ad group config from Gemini:", e);
+                return JSON.stringify({ error: "Failed to understand ad group configuration from AI." });
+            }
+            return await toolExecutorService.execute_google_ads_create_ad_group_from_config(parsedAdGroupConfig, projectId);
+        }
+        case 'google_ads_create_ad_scaffold': {
+            console.log("Agent: Initiating google_ads_create_ad_scaffold...");
+            const project = global.dataStore.findProjectById(projectId);
+            const projectContext = project ? project.description || project.name : "No project context available.";
+            const adGroupId = toolArguments.ad_group_id;
+
+            const geminiPromptForAdConfig = `Based on project context: "${projectContext}", for Google Ads ad group ID "${adGroupId}", generate a detailed JSON configuration for an Ad (type suggestion: "${toolArguments.ad_type_suggestion}"). Include headlines, descriptions, and final URLs if appropriate from the context.`;
+
+            const adConfigString = await geminiService.fetchGeminiResponse(geminiPromptForAdConfig, objective.chatHistory, []);
+
+            if (typeof adConfigString === 'object' && adConfigString.tool_call) {
+                 return JSON.stringify({ error: "Gemini unexpectedly tried to call another tool while generating ad config." });
+            }
+            let parsedAdConfig;
+            try {
+                parsedAdConfig = JSON.parse(adConfigString);
+            } catch (e) {
+                console.error("Agent: Failed to parse ad config from Gemini:", e);
+                return JSON.stringify({ error: "Failed to understand ad configuration from AI." });
+            }
+            return await toolExecutorService.execute_google_ads_create_ad_from_config(parsedAdConfig, projectId);
+        }
         default:
             console.error(`Agent: Unknown tool name in executeTool dispatcher: ${toolName}`);
             return JSON.stringify({ error: `Tool '${toolName}' is not recognized by the executeTool dispatcher.` });
@@ -46,7 +142,7 @@ async function executeTool(toolName, toolArguments, projectId) {
  * @param {string} userInput The user's latest message.
  * @param {Array<Object>} chatHistory The entire chat history.
  * @param {string} objectiveId The ID of the current objective.
- * @returns {Promise<string>} A promise that resolves to the agent's response.
+ * @returns {Promise<string|Object>} A promise that resolves to the agent's response, which can be a string or an object if asking for user input.
  */
 async function getAgentResponse(userInput, chatHistory, objectiveId) {
   console.log(`Agent: Received input - "${userInput}" for objective ID - ${objectiveId}`);
@@ -62,6 +158,66 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
     console.error(`Agent: Objective with ID ${objectiveId} not found.`);
     return "Agent: Objective not found. Cannot process request.";
   }
+
+  // Check for pending budget inquiry
+  if (objective.pendingToolBudgetInquiry && objective.pendingToolBudgetInquiry.projectId === objective.projectId && objective.pendingToolBudgetInquiry.objectiveId === objective.id) {
+      const budget = userInput;
+      const pendingInfo = objective.pendingToolBudgetInquiry;
+
+      console.log(`Agent: Received budget "${budget}" for pending campaign: ${pendingInfo.originalToolCall.name}.`);
+      // TODO: Validate budget format.
+
+      objective.chatHistory.push({ speaker: 'user', content: budget });
+      objective.chatHistory.push({ speaker: 'agent', content: `Understood. Budget set to: ${budget}. Now creating the campaign...` });
+
+      let parsedCampaignConfigFromPending;
+      try {
+          parsedCampaignConfigFromPending = JSON.parse(pendingInfo.generatedConfig);
+      } catch (e) {
+          console.error("Agent: Failed to parse stored campaign config from pendingToolBudgetInquiry:", e);
+          objective.chatHistory.push({ speaker: 'agent', content: "I encountered an issue with the campaign details I had prepared. Please try initiating the campaign creation again." });
+          objective.pendingToolBudgetInquiry = null;
+          // Advance step even on error to avoid loop, or have a specific error state
+          objective.plan.currentStepIndex = (pendingInfo.originalToolCall.stepIndex !== undefined ? pendingInfo.originalToolCall.stepIndex : objective.plan.currentStepIndex) + 1;
+          objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
+          global.dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory, null);
+          return {
+              message: "Error: Could not retrieve the saved campaign details to proceed with budget. Please try creating the campaign again.",
+              currentStep: objective.plan.currentStepIndex -1,
+              stepDescription: objective.plan.steps[objective.plan.currentStepIndex -1],
+              planStatus: objective.plan.status
+          };
+      }
+
+      // Call the actual executor function from toolExecutorService
+      const toolApiResult = await toolExecutorService.execute_google_ads_create_campaign_from_config(
+          parsedCampaignConfigFromPending,
+          budget, // User provided budget
+          pendingInfo.projectId
+      );
+
+      // Now, take toolApiResult and get a final summary from Gemini.
+      const originalStepDescription = objective.plan.steps[pendingInfo.originalToolCall.stepIndex !== undefined ? pendingInfo.originalToolCall.stepIndex : objective.plan.currentStepIndex];
+      const contextForGeminiSummary = `The Google Ads campaign creation tool was called (after budget was provided) and returned: ${toolApiResult}. Based on this, provide a concise summary for the user regarding the step: '${originalStepDescription}'.`;
+
+      const finalMessageForStep = await geminiService.fetchGeminiResponse(contextForGeminiSummary, objective.chatHistory, []);
+
+      objective.chatHistory.push({ speaker: 'agent', content: finalMessageForStep });
+      objective.pendingToolBudgetInquiry = null; // Clear pending state
+      // The step is now considered complete, advance plan
+      objective.plan.currentStepIndex = (pendingInfo.originalToolCall.stepIndex !== undefined ? pendingInfo.originalToolCall.stepIndex : objective.plan.currentStepIndex) + 1;
+      objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
+      global.dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory, objective.pendingToolBudgetInquiry);
+
+
+      return {
+          message: finalMessageForStep,
+          currentStep: objective.plan.currentStepIndex - 1,
+          stepDescription: objective.plan.steps[objective.plan.currentStepIndex - 1],
+          planStatus: objective.plan.status
+      };
+  }
+
 
   if (!objective.plan || objective.plan.status !== 'approved') {
     let message = "It looks like there's a plan that needs your attention. ";
@@ -139,8 +295,18 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
         } else {
             // TODO: Add argument validation against toolSchema.parameters here in a future step.
 
-            const toolOutput = await executeTool(toolCall.name, toolCall.arguments, objective.projectId);
+            const toolOutput = await executeTool(toolCall.name, toolCall.arguments, objective.projectId); // Objective is in scope
             console.log(`Agent: Tool ${toolCall.name} executed. Output:`, toolOutput);
+
+            // If executeTool returns an object with askUserInput, handle it
+            if (toolOutput && toolOutput.askUserInput) {
+                // The objective (with pendingToolBudgetInquiry) would have been set inside executeTool
+                // Add agent's question to chat history
+                objective.chatHistory.push({ speaker: 'agent', content: toolOutput.message });
+                // Save objective with pendingToolBudgetInquiry and new chat history
+                dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
+                return toolOutput; // Return the { askUserInput, message } object directly
+            }
 
             // Add tool call and tool output to chat history for context
             // This simple string representation can be improved with structured messages later.

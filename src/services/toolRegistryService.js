@@ -136,6 +136,86 @@ const toolSchemas = [
         },
         required: ["video_asset_id"]
     }
+  },
+  {
+    name: "google_ads_create_campaign_scaffold",
+    description: "Initiates the creation of a Google Ads campaign. Most details (targeting, bidding, etc.) will be derived from project context by the agent or by asking the user. Budget will be requested during execution.",
+    parameters: {
+        type: "object",
+        properties: {
+            campaign_name_suggestion: {
+                type: "string",
+                description: "An optional name suggestion for the campaign. If not provided, a name will be generated."
+            },
+            campaign_type_suggestion: {
+                type: "string",
+                description: "An optional suggestion for the campaign type (e.g., 'Search', 'Display', 'Performance Max'). Defaults to 'Search' if not provided or if context is unclear."
+            }
+        },
+        required: []
+    }
+  },
+  {
+    name: "google_ads_create_ad_group_scaffold",
+    description: "Initiates the creation of an Ad Group within a specified Google Ads campaign. Keywords, bids, and other details will be derived from project context or by asking the user.",
+    parameters: {
+        type: "object",
+        properties: {
+            campaign_id: {
+                type: "string",
+                description: "The ID of the Google Ads campaign this ad group will belong to."
+            },
+            ad_group_name_suggestion: {
+                type: "string",
+                description: "An optional name suggestion for the ad group. If not provided, a name will be generated."
+            }
+        },
+        required: ["campaign_id"]
+    }
+  },
+  {
+    name: "google_ads_create_ad_scaffold",
+    description: "Initiates the creation of an Ad within a specified Google Ads ad group. Ad copy (headlines, descriptions) and other details will be derived from project context or by asking the user.",
+    parameters: {
+        type: "object",
+        properties: {
+            ad_group_id: {
+                type: "string",
+                description: "The ID of the Google Ads ad group this ad will belong to."
+            },
+            ad_type_suggestion: {
+                type: "string",
+                description: "An optional suggestion for the ad type (e.g., 'TEXT_AD', 'RESPONSIVE_SEARCH_AD', 'RESPONSIVE_DISPLAY_AD'). Defaults to a suitable type if not provided."
+            }
+        },
+        required: ["ad_group_id"]
+    }
+  },
+  {
+    name: "execute_dynamic_asset_script",
+    description: "Modifies an existing project asset by generating Python code based on a natural language prompt and executing it in a sandboxed environment. Use this for tasks like resizing images/videos, adding text overlays, adding voiceovers, or other custom asset manipulations.",
+    parameters: {
+        type: "object",
+        properties: {
+            asset_id: {
+                type: "string",
+                description: "The ID of the existing project asset to be modified."
+            },
+            modification_prompt: {
+                type: "string",
+                description: "A natural language prompt describing the desired modification. For example: 'Resize to 1080x1080 pixels and convert to grayscale', or 'Add the text \"Hello World\" at the top center with a red font', or 'Shorten the video to the first 10 seconds and add a generic background music track'."
+            },
+            output_asset_name_suggestion: {
+                type: "string",
+                description: "An optional suggested name for the new, modified asset. If not provided, a name will be generated based on the modification."
+            },
+            output_asset_type: {
+                type: "string",
+                description: "The expected type of the output asset (e.g., 'image', 'video'). This helps guide the script generation and processing."
+            }
+        },
+        required: ["asset_id", "modification_prompt", "output_asset_type"]
+    }
   }
 ];
 
