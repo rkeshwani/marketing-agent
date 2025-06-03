@@ -1,6 +1,7 @@
 // Placeholder for Gemini API service
 // const axios = require('axios'); // Will be needed for actual API calls
 // const config = require('../config/config'); // To get API key and endpoint
+const { getAllToolSchemas } = require('./toolRegistryService');
 
 /**
  * Fetches a response from the (placeholder) Gemini API.
@@ -9,26 +10,29 @@
  * @param {string} userInput The user's latest message.
  * @param {Array<Object>} chatHistory The entire chat history (might be used for context).
  * @param {Array<Object>} projectAssets Assets associated with the project (optional).
- * @returns {Promise<string>} A promise that resolves to the simulated API response.
+ * @returns {Promise<string|Object>} A promise that resolves to the simulated API response,
+ * which can be a string (for text responses) or an object (for tool calls).
  */
 async function fetchGeminiResponse(userInput, chatHistory, projectAssets = []) {
   console.log('GeminiService (fetchGeminiResponse): Received input for API call -', userInput);
-  // console.log('GeminiService: Current chat history for context:', chatHistory); // For debugging
   console.log('GeminiService (fetchGeminiResponse): Received project assets:', projectAssets.length > 0 ? projectAssets.map(a => a.name) : 'No assets');
+
+  const tools = getAllToolSchemas();
+  console.log('GeminiService (fetchGeminiResponse): Available tools -', tools.map(t => t.name));
 
   // Simulate an API call delay
   await new Promise(resolve => setTimeout(resolve, 500));
 
-  // TODO: Implement actual API call using axios
-  // For the purpose of generatePlanForObjective, we will temporarily make this function return
-  // a structured string that generatePlanForObjective can parse.
-  // In a real scenario, this function would genuinely call the Gemini API with the prompt it receives.
+  // TODO: Implement actual API call using axios, passing userInput, chatHistory, projectAssets, and tools.
+  // The body of that request would look something like:
+  // JSON.stringify({ userInput, chatHistory, projectAssets, tools })
 
+  // --- Mocked Gemini API Response Handling ---
+
+  // Specific case for plan generation (remains unchanged as per subtask instructions)
   if (userInput.startsWith("Based on the following marketing objective:")) {
-    // This is a hacky way to identify the call from generatePlanForObjective
-    // In a real implementation, fetchGeminiResponse would just take the prompt and call the API.
-    // The structured response would come from the actual Gemini API.
-    console.log('GeminiService (fetchGeminiResponse): Detected plan generation prompt, returning simulated structured plan.');
+    console.log('GeminiService (fetchGeminiResponse): Detected plan generation prompt, returning simulated structured plan string.');
+    // This response is a string, and generatePlanForObjective expects to parse it.
     return `
 PLAN:
 - Step 1: Define target audience for ${userInput.match(/Title: "(.*?)"/)[1]}. [API: No, Content: Yes]
@@ -43,20 +47,66 @@ QUESTIONS:
     `.trim();
   }
 
-  // Original placeholder response for other calls (e.g., chat)
-  const simulatedResponse = `Gemini API (placeholder) processed: "${userInput}"`;
+  // --- General case: Simulate response that could be text or tool_call ---
+  // In a real scenario, the response from `await axios.post(...)` would be parsed.
+  // const apiResponse = await actualGeminiApiCall(userInput, chatHistory, projectAssets, tools);
+  // For now, we simulate this `apiResponse`.
 
-  // 1. Construct the request payload based on Gemini API requirements.
-  //    This might involve formatting the chatHistory and userInput.
-  // 2. Make a POST request using axios:
-  //    const response = await axios.post(config.GEMINI_API_ENDPOINT, payload, {
-  //      headers: { 'Authorization': `Bearer ${config.GEMINI_API_KEY}` }
-  //    });
-  // 3. Parse the response from the API (response.data) and return the relevant part.
-  // 4. Implement proper error handling (try-catch around the axios call).
+  // Example: Simulate a tool call for a specific input
+  if (userInput.toLowerCase().includes("search for assets about dogs")) {
+    console.log('GeminiService (fetchGeminiResponse): Simulating tool_call response.');
+    // This is the new structure that fetchGeminiResponse can return.
+    // The agent will need to handle this object.
+    return {
+      tool_call: {
+        name: "semantic_search_assets",
+        arguments: { query: "images of dogs" }
+      }
+    };
+  }
 
-  console.log('GeminiService: Returning simulated response.');
-  return simulatedResponse;
+  // Example: Simulate a tool call for image generation
+  if (userInput.toLowerCase().includes("create an image of a cat")) {
+    console.log('GeminiService (fetchGeminiResponse): Simulating tool_call response for image generation.');
+    return {
+      tool_call: {
+        name: "create_image_asset",
+        arguments: { prompt: "A majestic cat sitting on a throne" }
+      }
+    };
+  }
+
+  // Default: Simulate a standard text response
+  console.log('GeminiService (fetchGeminiResponse): Simulating text response.');
+  // This is also a new structure. Instead of returning a raw string,
+  // we return an object with a 'text' property, or the agent can check for string directly.
+  // For consistency with tool_call, let's aim for { text: "..." }
+  // However, previous tests might expect a direct string.
+  // Let's return { text: "..." } and adjust tests if necessary, or make agent handle both.
+  // The subtask says "if response.text exists, it should return the response.text".
+  // This implies the simulated or actual API returns { text: "..." } or { tool_call: ... }
+  // So, this function should return the *content* of response.text, not the object.
+  const simulatedText = `Gemini API (placeholder) processed: "${userInput}"`;
+  // To adhere to "return response.text", the *mock* API call would result in { text: simulatedText }
+  // And then this function would return simulatedText.
+  // Let's refine this: The *function* fetchGeminiResponse should return the tool_call object OR the text string.
+
+  // If the (mocked) API call returned { text: "some text" }, we return "some text"
+  // If it returned { tool_call: {...} }, we return the tool_call object.
+
+  // The current mock directly returns a string for plan generation. For other cases:
+  // Let's assume the "API" (which is this simulation) now produces an object.
+  const mockApiResponse = { text: `Gemini API (placeholder) processed: "${userInput}"` }; // Default mock structure
+
+  if (mockApiResponse.tool_call) { // This won't be hit with current mockApiResponse
+      return mockApiResponse.tool_call;
+  }
+  if (mockApiResponse.text) {
+      return mockApiResponse.text;
+  }
+  // Fallback if the response is just a string (to handle plan generation case carefully, though it's handled above)
+  return typeof mockApiResponse === 'string' ? mockApiResponse : "Error: Unexpected response structure from Gemini mock.";
+
 }
 
 async function generatePlanForObjective(objective, projectAssets = []) {
