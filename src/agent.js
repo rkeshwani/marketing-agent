@@ -83,12 +83,43 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
   const project = dataStore.findProjectById(objective.projectId);
   const projectAssets = project ? project.assets : [];
 
+  // --- Plan Refresh for Recurring Tasks Activated by Scheduler ---
+  if (objective.isRecurring &&
+      objective.plan.status === 'approved' && // Scheduler sets it to 'approved'
+      objective.plan.currentStepIndex === 0 && // Indicates it's the start of a new/refreshed run
+      objective.originalPlan && // Ensure there's a template
+      objective.currentRecurrenceContext // Ensure there's context to use for regeneration
+     ) {
+    console.log(`Agent: Recurring objective ${objectiveId} instance starting. Refreshing plan with context.`);
+    try {
+        // Regenerate the plan using the currentRecurrenceContext
+        const { planSteps, questions } = await geminiService.generatePlanForObjective(objective, projectAssets);
+
+        // Update the active plan with these new context-aware steps/questions
+        objective.plan.steps = planSteps;
+        objective.plan.questions = questions;
+        // Status remains 'approved', currentStepIndex remains 0.
+        // No need to update originalPlan here, that's the template.
+
+        dataStore.updateObjective(objective); // Save the refreshed plan
+        console.log(`Agent: Plan for recurring objective ${objectiveId} refreshed with new context.`);
+    } catch (error) {
+        console.error(`Agent: Error refreshing plan for recurring objective ${objectiveId}:`, error);
+        // Return an error message or handle appropriately.
+        // For now, let it proceed with the plan copied from originalPlan by the scheduler/previous logic,
+        // or return an error if plan refresh is critical.
+        return `Agent: Error refreshing plan for recurring task: ${error.message}`;
+    }
+  }
+  // --- End Plan Refresh ---
+
+
   // Execute next step if plan is in progress
   let currentStepIndex = objective.plan.currentStepIndex === undefined ? 0 : objective.plan.currentStepIndex;
 
   if (currentStepIndex < objective.plan.steps.length) {
     const currentStep = objective.plan.steps[currentStepIndex];
-    console.log(`Agent: Executing step ${currentStepIndex + 1}: ${currentStep}`);
+    console.log(`Agent: Executing step ${currentStepIndex + 1}: "${currentStep}" for objective ${objectiveId}`);
 
     // Call the service function to execute the step (might return text or tool_call)
     const stepExecutionResult = await geminiService.executePlanStep(currentStep, objective.chatHistory, projectAssets);
@@ -153,25 +184,100 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
     objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress'; // Update status if all steps done
 
     dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
+    // Ensure the full objective is updated in the data store
+    dataStore.updateObjective(objective);
+
 
     if (objective.plan.status === 'completed' && objective.plan.currentStepIndex >= objective.plan.steps.length) {
-         // If the plan just got completed by this step.
-         // The 'finalMessageForStep' is the message for the *last step's execution*.
-         // We should also add the "All plan steps completed!" message or ensure the client handles this.
-         // For now, let's return the message for the last step, and rely on the client to check planStatus.
-         // Or, we could prioritize the "All completed" message if the step execution also completed the plan.
-         // Let's return a specific object for completion here.
-        console.log(`Agent: All plan steps completed for objective ${objectiveId}.`);
-        // The finalMessageForStep for the *last* step is still relevant.
-        // We can add it to the chat history, but the primary message to UI should be completion.
-        // For now, let's ensure the client response reflects completion primarily.
-        // The problem is the `message` field. Let's make it the finalMessageForStep for now,
-        // and the client can use planStatus to show "All completed".
+        console.log(`Agent: Plan instance completed for objective ${objectiveId}.`);
+
+        // --- Recurrence Logic ---
+        if (objective.isRecurring && objective.recurrenceRule && objective.originalPlan) {
+            let scheduleNext = true;
+            const now = new Date();
+            let nextRunTime = null;
+
+            if (objective.recurrenceRule.endTime) {
+                const endTime = new Date(objective.recurrenceRule.endTime);
+                if (now >= endTime) {
+                    scheduleNext = false;
+                    console.log(`Agent: Recurrence ended for objective ${objectiveId} as endTime has passed.`);
+                }
+            }
+
+            if (scheduleNext) {
+                // Calculate nextRunTime (simple version)
+                const rule = objective.recurrenceRule;
+                nextRunTime = new Date(now); // Start from now
+
+                if (rule.frequency === 'daily') {
+                    nextRunTime.setDate(now.getDate() + (rule.interval || 1));
+                } else if (rule.frequency === 'weekly') {
+                    const currentDay = now.getDay(); // 0 (Sun) - 6 (Sat)
+                    let targetDay;
+                    // Simple dayOfWeek matching, assumes rule.dayOfWeek is lowercase 'monday', 'tuesday' etc.
+                    // More robust parsing would be needed for real-world scenarios.
+                    const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+                    targetDay = days.indexOf(rule.dayOfWeek ? rule.dayOfWeek.toLowerCase() : days[now.getDay()]); // Default to same day next week if not specified
+
+                    if (targetDay === -1) targetDay = now.getDay(); // Fallback if dayOfWeek is invalid
+
+                    let daysUntilTarget = targetDay - currentDay;
+                    if (daysUntilTarget <= 0 && (rule.interval || 1) === 1 && rule.frequency === 'weekly') { // ensure it's in the future for simple weekly
+                        daysUntilTarget += 7;
+                    }
+                    nextRunTime.setDate(now.getDate() + daysUntilTarget + (7 * ((rule.interval || 1) -1)) );
+
+                } else {
+                    console.log(`Agent: Unsupported recurrence frequency: ${rule.frequency}. Objective ${objectiveId} will not recur.`);
+                    scheduleNext = false;
+                }
+
+                // Basic time setting (e.g., keep the same time of day)
+                // For more complex scenarios, time settings from recurrenceRule would be used.
+                // nextRunTime.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), 0);
+
+
+                if (objective.recurrenceRule.endTime && nextRunTime > new Date(objective.recurrenceRule.endTime)) {
+                    scheduleNext = false;
+                    console.log(`Agent: Next calculated run time for objective ${objectiveId} is after endTime. Recurrence stopped.`);
+                }
+            }
+
+            if (scheduleNext && nextRunTime) {
+                objective.nextRunTime = nextRunTime;
+                objective.plan = {
+                    steps: JSON.parse(JSON.stringify(objective.originalPlan.steps)),
+                    questions: JSON.parse(JSON.stringify(objective.originalPlan.questions)),
+                    status: 'pending_scheduling', // New status
+                    currentStepIndex: 0,
+                };
+                objective.currentRecurrenceContext = {
+                    previousPostSummary: finalMessageForStep, // Store summary from the completed instance
+                    lastCompletionTime: new Date().toISOString(),
+                };
+                console.log(`Agent: Objective ${objectiveId} rescheduled. Next run: ${objective.nextRunTime}. Plan reset.`);
+            } else {
+                // No next run, so it's truly completed.
+                objective.nextRunTime = null; // Clear any previous nextRunTime
+                // objective.plan.status remains 'completed'
+                console.log(`Agent: Objective ${objectiveId} recurrence finished or not scheduled.`);
+            }
+        } else {
+             console.log(`Agent: Objective ${objectiveId} is not recurring or has no original plan. Final completion.`);
+             objective.plan.status = 'completed'; // Ensure it's marked completed
+        }
+        // --- End Recurrence Logic ---
+
+        // Update objective in dataStore after recurrence handling
+        dataStore.updateObjective(objective);
+
         return {
-            message: 'All plan steps completed! Last step result: ' + finalMessageForStep, // Or just "All plan steps completed!"
-            currentStep: currentStepIndex, // Index of the step just processed
+            message: finalMessageForStep ? 'Plan instance completed! Last step result: ' + finalMessageForStep : 'Plan instance completed!',
+            currentStep: currentStepIndex,
             stepDescription: currentStep,
-            planStatus: 'completed'
+            planStatus: objective.plan.status, // This will be 'pending_scheduling' or 'completed'
+            nextRunTime: objective.nextRunTime // Include nextRunTime in the response
         };
     }
 
@@ -185,12 +291,35 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
     // This case handles when the plan was already completed, or if it was 'approved' but had no steps / currentStepIndex was already at/past length.
     // If it just got completed by the block above, that return takes precedence.
     console.log(`Agent: Plan is already marked as completed or no more steps. Objective ID: ${objectiveId}.`);
-    objective.plan.status = 'completed'; // Ensure status is 'completed'
-    dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
+
+    // --- Recurrence Check on already completed plans ---
+    // This section might be redundant if the above block always catches completion and handles recurrence.
+    // However, it's a safeguard. If a plan is loaded as 'completed', this could re-trigger recurrence if applicable.
+    // For now, let's assume the main recurrence logic is within the "just completed" block.
+    // If an objective is loaded and its status is 'completed', but it has a nextRunTime in the past,
+    // the scheduler (external to this function) should pick it up.
+    // This function primarily reacts to a plan *instance* just finishing.
+
+    if (objective.isRecurring && objective.nextRunTime && new Date(objective.nextRunTime) <= new Date()) {
+        // This implies a scheduled run was missed or is due.
+        // The scheduler should handle this. For getAgentResponse, if plan is 'completed'
+        // and has a nextRunTime, it means it's waiting for that time.
+        console.log(`Agent: Objective ${objectiveId} is completed and has a future nextRunTime: ${objective.nextRunTime}. Waiting for scheduler.`);
+        // We might want to change status to 'pending_scheduling' if it's not already.
+        if(objective.plan.status !== 'pending_scheduling'){
+            // This situation should ideally be handled by scheduler logic primarily.
+            // For example, if a user tries to interact with an objective that completed and is now pending_scheduling.
+        }
+    }
+    // --- End Recurrence Check ---
+
+    objective.plan.status = 'completed'; // Ensure status is 'completed' if no recurrence logic changes it
+    dataStore.updateObjective(objective); // Update the objective
 
     return {
       message: 'All plan steps completed!', // General message for this state
-      planStatus: 'completed'
+      planStatus: 'completed',
+      nextRunTime: objective.nextRunTime // Include nextRunTime
     };
   }
 
@@ -230,15 +359,42 @@ async function initializeAgent(objectiveId) {
     objective.plan.questions = questions;
     objective.plan.status = 'pending_approval'; // Or 'generated_pending_review'
 
+    // Handle recurring objectives: store the original plan
+    if (objective.isRecurring) {
+        objective.originalPlan = {
+            steps: JSON.parse(JSON.stringify(planSteps)), // Deep copy
+            questions: JSON.parse(JSON.stringify(questions)), // Deep copy
+            // currentStepIndex will be reset to 0 when a new recurrence starts
+        };
+        console.log(`Agent: Stored original plan for recurring objective ${objectiveId}.`);
+    }
+
     // Save the updated objective
     // Ensuring consistency with the 5-argument version used elsewhere.
-    const updatedObjective = dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
+    // Note: objective.originalPlan is now also part of the objective being saved if it's recurring
+    const updatedObjective = dataStore.updateObjectiveById(
+        objectiveId,
+        objective.title,
+        objective.brief,
+        objective.plan,
+        objective.chatHistory,
+        // Potentially add other fields if updateObjectiveById is extended like in other parts of the codebase
+        // For now, assuming dataStore handles persistence of the whole objective object passed to it or identified by ID.
+        // Let's ensure the full objective object is updated if originalPlan was added.
+        // If updateObjectiveById only updates specific fields, this needs adjustment.
+        // Based on its usage, it seems to update specific fields, but the objective object itself
+        // is modified in memory and then passed, so new fields like originalPlan should persist
+        // if the dataStore method saves the whole object or is aware of this new field.
+        // Let's assume it saves the modified objective object.
+    );
+     dataStore.updateObjective(objective); // Make sure the whole objective is saved
+
     if (!updatedObjective) {
         // This case should ideally not be reached if findObjectiveById succeeded and dataStore is consistent
         throw new Error(`Failed to update objective with ID ${objectiveId}.`);
     }
 
-    return updatedObjective;
+    return objective; // Return the modified objective, which now includes originalPlan
 }
 
 module.exports = {
