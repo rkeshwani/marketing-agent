@@ -24,6 +24,9 @@ const config = {
   EMBEDDING_API_KEY: process.env.EMBEDDING_API_KEY || '',
   EMBEDDING_API_ENDPOINT: process.env.EMBEDDING_API_ENDPOINT || 'https://placeholder.embeddingapi.com/v1/embed', // Placeholder
 
+  // New: Facebook App Access Token (for public searches or app-level actions)
+  FACEBOOK_APP_ACCESS_TOKEN: process.env.FACEBOOK_APP_ACCESS_TOKEN || '',
+
   // Add other configurations as needed
 };
 

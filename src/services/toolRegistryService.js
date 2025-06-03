@@ -42,6 +42,100 @@ const toolSchemas = [
       },
       required: ["prompt"]
     }
+  },
+  {
+    name: "facebook_managed_page_posts_search",
+    description: "Searches posts on the Facebook Page linked to the current project. Results will be from the page associated with the project's Facebook credentials.",
+    parameters: {
+        type: "object",
+        properties: {
+            keywords: {
+                type: "string",
+                description: "Keywords to search for in the page posts. Optional."
+            },
+            startDate: {
+                type: "string",
+                description: "Start date for search range (e.g., YYYY-MM-DD). Optional."
+            },
+            endDate: {
+                type: "string",
+                description: "End date for search range (e.g., YYYY-MM-DD). Optional."
+            }
+        },
+        required: []
+    }
+  },
+  {
+    name: "facebook_public_posts_search",
+    description: "Searches public Facebook posts. Useful for competitor research or general public content discovery.",
+    parameters: {
+        type: "object",
+        properties: {
+            keywords: {
+                type: "string",
+                description: "Keywords to search for in public posts."
+            },
+            targetPublicPageIdOrName: {
+                type: "string",
+                description: "The ID or name of a specific public Facebook Page to search within. Optional."
+            }
+        },
+        required: ["keywords"]
+    }
+  },
+  {
+    name: "tiktok_public_posts_search",
+    description: "Searches public TikTok posts by keywords or hashtags.",
+    parameters: {
+        type: "object",
+        properties: {
+            keywordsOrHashtags: {
+                type: "string",
+                description: "Keywords or hashtags (e.g., #funnycats) to search for in public TikTok posts."
+            }
+        },
+        required: ["keywordsOrHashtags"]
+    }
+  },
+  {
+    name: "facebook_create_post",
+    description: "Creates a new post on the linked Facebook Page. Can include text, and optionally one image asset OR one video asset from the project library. Do not provide both an image and a video asset ID.",
+    parameters: {
+        type: "object",
+        properties: {
+            text_content: {
+                type: "string",
+                description: "The main text content for the Facebook post."
+            },
+            image_asset_id: {
+                type: "string",
+                description: "ID of an image asset from the project library to attach to the post. Optional. Do not use if video_asset_id is provided."
+            },
+            video_asset_id: {
+                type: "string",
+                description: "ID of a video asset from the project library to attach to the post. Optional. Do not use if image_asset_id is provided."
+            }
+        },
+        required: ["text_content"]
+    }
+  },
+  {
+    name: "tiktok_create_post",
+    description: "Creates a new post on the linked TikTok account. Requires a video asset from the project library and can include optional text content.",
+    parameters: {
+        type: "object",
+        properties: {
+            video_asset_id: {
+                type: "string",
+                description: "ID of a video asset from the project library to be posted on TikTok."
+            },
+            text_content: {
+                type: "string",
+                description: "The caption or text content for the TikTok post. Optional."
+            }
+        },
+        required: ["video_asset_id"]
+    }
   }
 ];
 

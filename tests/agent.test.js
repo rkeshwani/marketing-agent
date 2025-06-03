@@ -58,8 +58,75 @@ jest.mock('../src/services/vectorService', () => ({
 }));
 const vectorService = require('../src/services/vectorService'); // Import after mock
 
+// Mock 'toolExecutorService'
+const mockToolExecutorOutput = {
+    // e.g., facebook_managed_page_posts_search: JSON.stringify({ data: [{id: 'fb_page_post1'}] })
+};
+let lastToolExecutorCall = null;
+
+jest.mock('../src/services/toolExecutorService', () => ({
+    execute_facebook_managed_page_posts_search: jest.fn(async (params, projectId) => {
+        lastToolExecutorCall = { name: 'execute_facebook_managed_page_posts_search', params, projectId };
+        return mockToolExecutorOutput.facebook_managed_page_posts_search || JSON.stringify({error: 'Tool facebook_managed_page_posts_search not mocked in test'});
+    }),
+    execute_facebook_public_posts_search: jest.fn(async (params, projectId) => {
+        lastToolExecutorCall = { name: 'execute_facebook_public_posts_search', params, projectId };
+        return mockToolExecutorOutput.facebook_public_posts_search || JSON.stringify({error: 'Tool facebook_public_posts_search not mocked in test'});
+    }),
+    execute_tiktok_public_posts_search: jest.fn(async (params, projectId) => {
+        lastToolExecutorCall = { name: 'execute_tiktok_public_posts_search', params, projectId };
+        return mockToolExecutorOutput.tiktok_public_posts_search || JSON.stringify({error: 'Tool tiktok_public_posts_search not mocked in test'});
+    }),
+    execute_facebook_create_post: jest.fn(async (params, projectId) => {
+        lastToolExecutorCall = { name: 'execute_facebook_create_post', params, projectId };
+        // Simulate asset creation for project used by toolExecutorService if mock output suggests success
+        if (mockObjective && mockObjective.projectId === projectId &&
+            mockToolExecutorOutput.facebook_create_post &&
+            JSON.parse(mockToolExecutorOutput.facebook_create_post).id) {
+             if(!mockObjective.assets) mockObjective.assets = [];
+             // This part is tricky as the actual asset creation happens in toolExecutorService.
+             // The mock here should just return what toolExecutorService would.
+             // The agent test will verify if the agent *would have* updated assets based on this response.
+        }
+        return mockToolExecutorOutput.facebook_create_post || JSON.stringify({error: 'Tool facebook_create_post not mocked in test'});
+    }),
+    execute_tiktok_create_post: jest.fn(async (params, projectId) => {
+        lastToolExecutorCall = { name: 'execute_tiktok_create_post', params, projectId };
+        return mockToolExecutorOutput.tiktok_create_post || JSON.stringify({error: 'Tool tiktok_create_post not mocked in test'});
+    }),
+    perform_semantic_search_assets_tool: jest.fn(async (query, projectId) => {
+        lastToolExecutorCall = { name: 'perform_semantic_search_assets_tool', query, projectId };
+        return mockToolExecutorOutput.perform_semantic_search_assets_tool || JSON.stringify({error: 'Tool perform_semantic_search_assets_tool not mocked in test'});
+    }),
+    create_image_asset_tool: jest.fn(async (prompt, projectId) => {
+        lastToolExecutorCall = { name: 'create_image_asset_tool', prompt, projectId };
+        // Simulate that the toolExecutorService would have updated assets if successful
+        if (mockObjective && mockObjective.projectId === projectId &&
+            mockToolExecutorOutput.create_image_asset_tool &&
+            JSON.parse(mockToolExecutorOutput.create_image_asset_tool).asset_id) {
+           if(!mockObjective.assets) mockObjective.assets = [];
+           const newAssetData = JSON.parse(mockToolExecutorOutput.create_image_asset_tool);
+           // This mock now needs to reflect that the toolExecutorService would have created the asset.
+           // So, we add it to mockObjective.assets for the agent test to correctly verify subsequent logic.
+            mockObjective.assets.push({
+                assetId: newAssetData.asset_id,
+                name: newAssetData.name,
+                type:'image',
+                url: newAssetData.image_url,
+                prompt: prompt
+            });
+       }
+       return mockToolExecutorOutput.create_image_asset_tool || JSON.stringify({error: 'Tool create_image_asset_tool not mocked in test'});
+    }),
+    create_video_asset_tool: jest.fn(async (prompt, projectId) => {
+        lastToolExecutorCall = { name: 'create_video_asset_tool', prompt, projectId };
+        return mockToolExecutorOutput.create_video_asset_tool || JSON.stringify({error: 'Tool create_video_asset_tool not mocked in test'});
+    })
+}));
+const toolExecutorService = require('../src/services/toolExecutorService'); // Import after mock
+
 const agent = require('../src/agent');
-const geminiService = require('../src/services/geminiService'); // Still need to mock parts of this
+const geminiService = require('../src/services/geminiService');
 
 // NOTE: This test suite assumes that agent.js can be made to use the mockDataStore defined herein.
 // For true unit testing, agent.js would need to support dependency injection for dataStore
@@ -125,6 +192,16 @@ function setup() {
     vectorService.findSimilarAssets.mockClear();
     recordedEmbeddingCalls = [];
     recordedAddVectorCalls = [];
+
+    // Clear toolExecutorService mocks
+    lastToolExecutorCall = null;
+    Object.values(toolExecutorService).forEach(mockFn => {
+        if (jest.isMockFunction(mockFn)) {
+            mockFn.mockClear();
+        }
+    });
+    // Clear any predefined outputs for toolExecutorService
+    Object.keys(mockToolExecutorOutput).forEach(k => delete mockToolExecutorOutput[k]);
 }
 
 function teardown() {
@@ -134,7 +211,6 @@ function teardown() {
     global.dataStore = undefined;
     mockExecutePlanStepResponse = null;
 
-    // Clear mocks and responses
     fetch.mockClear();
     mockFetchResponses = {};
     vectorService.generateEmbedding.mockClear();
@@ -142,6 +218,15 @@ function teardown() {
     vectorService.findSimilarAssets.mockClear();
     recordedEmbeddingCalls = [];
     recordedAddVectorCalls = [];
+
+    Object.keys(mockToolExecutorOutput).forEach(k => delete mockToolExecutorOutput[k]);
+    lastToolExecutorCall = null;
+    // Clear mocks on toolExecutorService functions
+     Object.values(toolExecutorService).forEach(mockFn => {
+        if (jest.isMockFunction(mockFn)) {
+            mockFn.mockClear();
+        }
+    });
 }
 
 async function testAgentReturnsServiceResponseForConversation() {
@@ -232,64 +317,70 @@ async function testPlanNotApprovedReturnsApprovalMessage() {
     teardown();
 }
 
-// --- New Tests for Tool Execution ---
+// --- Updated Tests for Tool Execution (using toolExecutorService mock) ---
 
 async function testAgentExecutesSemanticSearchTool() {
-    console.log('Test: Agent executes semantic_search_assets tool...');
+    console.log('Test: Agent executes semantic_search_assets tool via toolExecutorService...');
     setup();
     mockObjective.plan = { steps: ['Search for dogs'], status: 'approved', currentStepIndex: 0, questions: [] };
+    // Assets that the perform_semantic_search_assets_tool mock might return based on.
+    // The actual search logic is in toolExecutorService, so we just need to ensure the agent passes params.
     mockObjective.assets = [
-        { assetId: 'asset_dog_1', name: 'dog park video', description: 'dogs playing fetch', type: 'video', url: 'http://example.com/dog.mp4' },
-        { assetId: 'asset_cat_1', name: 'cat picture', description: 'a tabby cat', type: 'image', url: 'http://example.com/cat.jpg' }
+        { assetId: 'asset_dog_1', name: 'dog park video', description: 'dogs playing fetch', type: 'video', url: 'http://example.com/dog.mp4' }
     ];
-    mockExecutePlanStepResponse = { tool_call: { name: "semantic_search_assets", arguments: { query: "dogs" } } };
+    const searchQuery = "dogs";
+    mockExecutePlanStepResponse = { tool_call: { name: "semantic_search_assets", arguments: { query: searchQuery } } };
+
+    const mockToolResults = [{ id: 'asset_dog_1', name: 'dog park video', type: 'video', description: 'dogs playing fetch', url: 'http://example.com/dog.mp4' }];
+    mockToolExecutorOutput.perform_semantic_search_assets_tool = JSON.stringify(mockToolResults);
 
     const response = await agent.getAgentResponse('User input for search', [], mockObjective.id);
 
+    expect(toolExecutorService.perform_semantic_search_assets_tool).toHaveBeenCalledWith(searchQuery, mockObjective.projectId);
     expect(response.message).toMatch(/^Gemini summary based on tool output:/);
-    const expectedToolOutput = JSON.stringify([{ id: 'asset_dog_1', name: 'dog park video', type: 'video', description: 'dogs playing fetch', url: 'http://example.com/dog.mp4' }]);
-    expect(response.message).toContain(expectedToolOutput);
+    expect(response.message).toContain(JSON.stringify(mockToolResults));
     expect(mockObjective.plan.currentStepIndex).toBe(1);
     expect(mockObjective.chatHistory.length).toBe(2);
     expect(mockObjective.chatHistory[0].content).toContain('semantic_search_assets');
     expect(mockObjective.chatHistory[1].content).toMatch(/^Gemini summary based on tool output:/);
-    expect(vectorService.generateEmbedding).toHaveBeenCalledWith("dogs");
-    expect(vectorService.findSimilarAssets).toHaveBeenCalledWith(mockObjective.projectId, expect.any(Array), 5);
-    console.log('Test Passed: Agent executes semantic_search_assets tool.');
+    console.log('Test Passed: Agent executes semantic_search_assets tool via toolExecutorService.');
     teardown();
 }
 
 async function testAgentExecutesCreateImageAssetTool() {
-    console.log('Test: Agent executes create_image_asset tool...');
+    console.log('Test: Agent executes create_image_asset tool via toolExecutorService...');
     setup();
     mockObjective.plan = { steps: ['Create image of a sunset'], status: 'approved', currentStepIndex: 0, questions: [] };
-    mockObjective.assets = [];
+    mockObjective.assets = []; // Start with no assets for this test
     const promptForTool = "a beautiful sunset";
-    const expectedImageUrl = 'http://mocked-api.com/generated_image.jpg';
+    const expectedAssetId = 'img_mock_123_agent_test';
+    const expectedImageUrl = 'http://mocked-api.com/generated_image_for_agent.jpg';
 
     mockExecutePlanStepResponse = { tool_call: { name: "create_image_asset", arguments: { prompt: promptForTool } } };
-    mockFetchResponses[config.GEMINI_IMAGE_API_ENDPOINT] = (options) => {
-        expect(JSON.parse(options.body).prompt).toBe(promptForTool);
-        expect(options.headers.Authorization).toBe(`Bearer ${config.GEMINI_IMAGE_API_KEY}`);
-        return {
-            ok: true,
-            status: 200,
-            json: async () => ({ imageUrl: expectedImageUrl })
-        };
-    };
+    // Mock the response from toolExecutorService.create_image_asset_tool
+    // This mock should also simulate adding the asset to mockObjective.assets if agent relies on it
+    mockToolExecutorOutput.create_image_asset_tool = JSON.stringify({
+        asset_id: expectedAssetId,
+        image_url: expectedImageUrl,
+        name: `Generated Image: ${promptForTool.substring(0,30)}...`,
+        message: 'Image asset created...'
+    });
+    // The mock for toolExecutorService.create_image_asset_tool in setup() handles adding to mockObjective.assets
 
     const response = await agent.getAgentResponse('User input for image', [], mockObjective.id);
 
+    expect(toolExecutorService.create_image_asset_tool).toHaveBeenCalledWith(promptForTool, mockObjective.projectId);
     expect(response.message).toMatch(/^Gemini summary based on tool output:/);
-    expect(fetch).toHaveBeenCalledWith(config.GEMINI_IMAGE_API_ENDPOINT, expect.anything());
+    expect(response.message).toContain(expectedAssetId);
+
     expect(mockObjective.assets.length).toBe(1);
+    expect(mockObjective.assets[0].assetId).toBe(expectedAssetId);
     expect(mockObjective.assets[0].type).toBe('image');
     expect(mockObjective.assets[0].prompt).toBe(promptForTool);
     expect(mockObjective.assets[0].url).toBe(expectedImageUrl);
+
     expect(mockObjective.plan.currentStepIndex).toBe(1);
-    expect(vectorService.generateEmbedding).toHaveBeenCalled();
-    expect(vectorService.addAssetVector).toHaveBeenCalledWith(mockObjective.projectId, mockObjective.assets[0].assetId, expect.any(Array));
-    console.log('Test Passed: Agent executes create_image_asset tool.');
+    console.log('Test Passed: Agent executes create_image_asset tool via toolExecutorService.');
     teardown();
 }
 
@@ -298,20 +389,18 @@ async function testAgentHandlesImageGenerationApiError() {
     setup();
     mockObjective.plan = { steps: ['Create image of a cat'], status: 'approved', currentStepIndex: 0, questions: [] };
     mockExecutePlanStepResponse = { tool_call: { name: "create_image_asset", arguments: { prompt: "a grumpy cat" } } };
-    mockFetchResponses[config.GEMINI_IMAGE_API_ENDPOINT] = (options) => ({
-        ok: false,
-        status: 500,
-        text: async () => 'Internal Server Error from mock',
-        json: async () => ({ error: 'Internal Server Error from mock' })
-    });
+
+    // Mock the toolExecutorService.create_image_asset_tool to return an error
+    mockToolExecutorOutput.create_image_asset_tool = JSON.stringify({ error: "Failed to generate image: API Error 500 from tool service" });
 
     const response = await agent.getAgentResponse('User input for image error', [], mockObjective.id);
 
+    expect(toolExecutorService.create_image_asset_tool).toHaveBeenCalledWith("a grumpy cat", mockObjective.projectId);
     expect(response.message).toMatch(/^Gemini summary based on tool output:/);
-    expect(response.message).toContain("Failed to generate image: API Error 500");
-    expect(mockObjective.assets.length).toBe(0);
+    expect(response.message).toContain("Failed to generate image: API Error 500 from tool service");
+    expect(mockObjective.assets.length).toBe(0); // No asset should have been added
     expect(mockObjective.plan.currentStepIndex).toBe(1);
-    console.log('Test Passed: Agent handles image generation API error.');
+    console.log('Test Passed: Agent handles image generation error from tool service.');
     teardown();
 }
 
@@ -356,12 +445,18 @@ async function runTests() {
     await testPlanAlreadyCompletedReturnsAppropriateMessage();
     await testPlanNotApprovedReturnsApprovalMessage();
 
-    // New tool execution tests
+    // Updated tool execution tests
     await testAgentExecutesSemanticSearchTool();
     await testAgentExecutesCreateImageAssetTool();
-    await testAgentHandlesImageGenerationApiError(); // Added
+    await testAgentHandlesImageGenerationApiError();
     await testAgentHandlesUnknownToolNameFromGemini();
     await testStepCompletesDirectlyWithoutToolCall();
+
+    // Social media tool tests
+    await testAgentExecutesFacebookManagedPageSearch();
+    await testAgentExecutesFacebookCreatePost();
+    await testAgentHandlesFacebookCreatePostErrorFromToolService();
+    // Add calls to testAgentExecutesFacebookPublicSearch and testAgentExecutesTikTokSearch etc. when implemented
 
     console.log('All agent tests passed!');
   } catch (error) {
@@ -373,6 +468,70 @@ async function runTests() {
 // If this file is run directly, execute the tests
 if (require.main === module) {
   runTests();
+}
+
+// --- New tests for Social Media Tools ---
+async function testAgentExecutesFacebookManagedPageSearch() {
+    console.log('Test: Agent executes facebook_managed_page_posts_search tool...');
+    setup();
+    mockObjective.plan = { steps: ['Search FB page for cats'], status: 'approved', currentStepIndex: 0, questions: [] };
+
+    mockExecutePlanStepResponse = {
+        tool_call: { name: "facebook_managed_page_posts_search", arguments: { keywords: "cats" } }
+    };
+    const mockFbSearchResult = { data: [{id: 'fb_page_post1', message: 'Cats on the page!'}] };
+    mockToolExecutorOutput.facebook_managed_page_posts_search = JSON.stringify(mockFbSearchResult);
+
+    const response = await agent.getAgentResponse('User input for FB page search', [], mockObjective.id);
+
+    expect(toolExecutorService.execute_facebook_managed_page_posts_search).toHaveBeenCalledWith({ keywords: "cats" }, mockObjective.projectId);
+    expect(response.message).toMatch(/Gemini summary based on tool output:.*fb_page_post1/);
+    expect(mockObjective.plan.currentStepIndex).toBe(1);
+    const lastMessage = mockObjective.chatHistory[mockObjective.chatHistory.length - 1];
+    const secondLastMessage = mockObjective.chatHistory[mockObjective.chatHistory.length - 2];
+    expect(secondLastMessage.content).toMatch(/Called tool facebook_managed_page_posts_search/);
+    expect(lastMessage.content).toEqual(response.message);
+    console.log('Test Passed: Agent executes facebook_managed_page_posts_search.');
+    teardown();
+}
+
+async function testAgentExecutesFacebookCreatePost() {
+    console.log('Test: Agent executes facebook_create_post tool...');
+    setup();
+    mockObjective.plan = { steps: ['Post "Hello FB" to page'], status: 'approved', currentStepIndex: 0, questions: [] };
+    const postText = "Hello FB";
+    mockExecutePlanStepResponse = {
+        tool_call: { name: "facebook_create_post", arguments: { text_content: postText } }
+    };
+    const mockPostResult = { id: "fb_page_123_post_abc" };
+    mockToolExecutorOutput.facebook_create_post = JSON.stringify(mockPostResult);
+
+    const response = await agent.getAgentResponse('User input for FB post', [], mockObjective.id);
+
+    expect(toolExecutorService.execute_facebook_create_post).toHaveBeenCalledWith({ text_content: postText }, mockObjective.projectId);
+    expect(response.message).toMatch(/Gemini summary based on tool output:.*fb_page_123_post_abc/);
+    expect(mockObjective.plan.currentStepIndex).toBe(1);
+    console.log('Test Passed: Agent executes facebook_create_post.');
+    teardown();
+}
+
+async function testAgentHandlesFacebookCreatePostErrorFromToolService() {
+    console.log('Test: Agent handles facebook_create_post error from tool service...');
+    setup();
+    mockObjective.plan = { steps: ['Post "Error FB" to page'], status: 'approved', currentStepIndex: 0, questions: [] };
+    const postText = "Error FB";
+    mockExecutePlanStepResponse = {
+        tool_call: { name: "facebook_create_post", arguments: { text_content: postText } }
+    };
+    mockToolExecutorOutput.facebook_create_post = JSON.stringify({ error: "Failed to post to FB for test" });
+
+    const response = await agent.getAgentResponse('User input for FB post error', [], mockObjective.id);
+
+    expect(toolExecutorService.execute_facebook_create_post).toHaveBeenCalledWith({ text_content: postText }, mockObjective.projectId);
+    expect(response.message).toMatch(/Gemini summary based on tool output:.*Failed to post to FB for test/);
+    expect(mockObjective.plan.currentStepIndex).toBe(1); // Step is still consumed
+    console.log('Test Passed: Agent handles facebook_create_post error.');
+    teardown();
 }
 
 module.exports = { runTests }; // Export for potential use with a test runner

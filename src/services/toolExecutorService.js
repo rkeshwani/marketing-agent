@@ -240,8 +240,131 @@ async function create_video_asset_tool(prompt, projectId) {
     }
 }
 
+// --- New Social Media Tool Functions ---
+
+async function execute_facebook_managed_page_posts_search(params, projectId) {
+    console.log(`Executing facebook_managed_page_posts_search for project ${projectId}`, params);
+    const project = global.dataStore.findProjectById(projectId);
+    if (!project) return JSON.stringify({ error: "Project not found." });
+    if (!project.facebookPageAccessToken || !project.facebookSelectedPageID) {
+        return JSON.stringify({ error: "Facebook Page access token or Page ID not configured for this project." });
+    }
+    // Mock API call
+    const keywords = params && params.keywords ? params.keywords : '';
+    const apiUrl = `https://graph.facebook.com/v18.0/${project.facebookSelectedPageID}/posts?access_token=${project.facebookPageAccessToken}&q=${encodeURIComponent(keywords)}`;
+    console.log("Mocking API call to Facebook (managed page posts search):", apiUrl);
+    // In a real scenario, use fetch. For now, return mock data.
+    return JSON.stringify({
+        data: [{ id: `${project.facebookSelectedPageID}_mockpost1`, message: `Mock post about ${keywords || 'anything'} from managed page`, created_time: new Date().toISOString() }],
+        paging: { cursors: { after: "mock_after_cursor" }}
+    });
+}
+
+async function execute_facebook_public_posts_search(params, projectId) {
+    console.log(`Executing facebook_public_posts_search for project ${projectId}`, params);
+    const project = global.dataStore.findProjectById(projectId);
+
+    // Public searches might use a long-lived App Access Token or a User Access Token.
+    // For this mock, we prioritize project's user token, then check for an app token in config.
+    // Note: A FACEBOOK_APP_ACCESS_TOKEN would need to be added to config.js if this strategy is used.
+    const appAccessToken = config.FACEBOOK_APP_ACCESS_TOKEN;
+    const tokenToUse = (project && project.facebookUserAccessToken) ? project.facebookUserAccessToken : appAccessToken;
+
+    if(!tokenToUse) {
+        return JSON.stringify({ error: "Facebook access token (user or app) not available for public search." });
+    }
+
+    const keywords = params && params.keywords ? params.keywords : '';
+    const target = params && params.targetPublicPageIdOrName ? params.targetPublicPageIdOrName : 'cocacola'; // Default for mock
+    const apiUrl = `https://graph.facebook.com/v18.0/${target}/posts?fields=id,message,from,created_time&access_token=${tokenToUse}&q=${encodeURIComponent(keywords)}`;
+    console.log("Mocking API call to Facebook (public posts search):", apiUrl);
+    return JSON.stringify({
+        data: [{ id: `${target}_publicmockpost1`, message: `Public mock post about ${keywords} from ${target}`, from: {name: target}, created_time: new Date().toISOString() }],
+        paging: { cursors: { after: "mock_after_cursor" }}
+    });
+}
+
+async function execute_tiktok_public_posts_search(params, projectId) {
+    console.log(`Executing tiktok_public_posts_search for project ${projectId}`, params);
+    const project = global.dataStore.findProjectById(projectId);
+    // Assuming a TikTok access token might be useful for rate limits or specific search types,
+    // but public search might also work without one for some queries.
+    if (!project || !project.tiktokAccessToken) {
+        console.warn("TikTok access token not configured for this project. Proceeding with public search if possible.");
+        // Depending on actual API, might return error or proceed without token.
+    }
+    const keywordsOrHashtags = params && params.keywordsOrHashtags ? params.keywordsOrHashtags : '';
+    const apiUrl = `https://api.tiktok.com/v2/research/video/query/?query=${encodeURIComponent(keywordsOrHashtags)}`; // Example endpoint
+    console.log("Mocking API call to TikTok (public posts search):", apiUrl);
+    return JSON.stringify({
+        data: { videos: [{ video_id: 'mocktiktok1', video_description: `TikTok about ${keywordsOrHashtags}`, author_unique_id: 'tiktok_user_mock' }]}, // Corrected field name
+        cursor: "mock_cursor", has_more: false
+    });
+}
+
+async function execute_facebook_create_post(params, projectId) {
+    console.log(`Executing facebook_create_post for project ${projectId}`, params);
+    const project = global.dataStore.findProjectById(projectId);
+    if (!project) return JSON.stringify({ error: "Project not found." });
+    if (!project.facebookPageAccessToken || !project.facebookSelectedPageID) {
+        return JSON.stringify({ error: "Facebook Page access token or Page ID not configured for this project." });
+    }
+
+    let mediaUrl = null;
+    let mediaType = null;
+    if (params.image_asset_id && params.video_asset_id) {
+        return JSON.stringify({ error: "Cannot provide both image_asset_id and video_asset_id."});
+    }
+    if (params.image_asset_id) {
+        const imageAsset = project.assets.find(a => (a.assetId === params.image_asset_id || a.id === params.image_asset_id) && a.type === 'image');
+        if (!imageAsset || !imageAsset.url) return JSON.stringify({ error: `Image asset ${params.image_asset_id} not found or has no URL.` });
+        mediaUrl = imageAsset.url;
+        mediaType = 'image';
+    } else if (params.video_asset_id) {
+        const videoAsset = project.assets.find(a => (a.assetId === params.video_asset_id || a.id === params.video_asset_id) && a.type === 'video');
+        if (!videoAsset || !videoAsset.url) return JSON.stringify({ error: `Video asset ${params.video_asset_id} not found or has no URL.` });
+        mediaUrl = videoAsset.url;
+        mediaType = 'video';
+    }
+
+    const postData = { message: params.text_content };
+    if (mediaUrl && mediaType === 'image') postData.url = mediaUrl;
+    if (mediaUrl && mediaType === 'video') postData.file_url = mediaUrl;
+
+    const endpointPath = (mediaType === 'video') ? 'videos' : (mediaType === 'image' ? 'photos' : 'feed');
+    const apiUrl = `https://graph.facebook.com/v18.0/${project.facebookSelectedPageID}/${endpointPath}?access_token=${project.facebookPageAccessToken}`;
+    console.log("Mocking API POST to Facebook (create post):", apiUrl, "with data:", postData);
+
+    return JSON.stringify({ id: `${project.facebookSelectedPageID}_mockpost${Date.now()}` });
+}
+
+async function execute_tiktok_create_post(params, projectId) {
+    console.log(`Executing tiktok_create_post for project ${projectId}`, params);
+    const project = global.dataStore.findProjectById(projectId);
+    if (!project) return JSON.stringify({ error: "Project not found." });
+    if (!project.tiktokAccessToken) {
+        return JSON.stringify({ error: "TikTok access token not configured for this project." });
+    }
+
+    const videoAsset = project.assets.find(a => (a.assetId === params.video_asset_id || a.id === params.video_asset_id) && a.type === 'video');
+    if (!videoAsset || !videoAsset.url) {
+        return JSON.stringify({ error: `Video asset ${params.video_asset_id} not found or has no URL.` });
+    }
+
+    const postData = { description: params.text_content, video_url: videoAsset.url };
+    const apiUrl = `https://api.tiktok.com/v2/post/publish/video/`; // Example endpoint
+    console.log("Mocking API POST to TikTok (create post):", apiUrl, "with data:", postData);
+
+    return JSON.stringify({ data: { item_id: `mocktiktokpost${Date.now()}` }, error_code: 0, error_message: "" });
+}
+
 module.exports = {
     perform_semantic_search_assets_tool,
     create_image_asset_tool,
-    create_video_asset_tool
+    create_video_asset_tool,
+    execute_facebook_managed_page_posts_search,
+    execute_facebook_public_posts_search,
+    execute_tiktok_public_posts_search,
+    execute_facebook_create_post,
+    execute_tiktok_create_post
 };

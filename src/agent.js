@@ -22,6 +22,16 @@ async function executeTool(toolName, toolArguments, projectId) {
         case 'create_video_asset':
             const videoPrompt = toolArguments && toolArguments.prompt ? toolArguments.prompt : "Unspecified video prompt";
             return await toolExecutorService.create_video_asset_tool(videoPrompt, projectId);
+        case 'facebook_managed_page_posts_search':
+            return await toolExecutorService.execute_facebook_managed_page_posts_search(toolArguments, projectId);
+        case 'facebook_public_posts_search':
+            return await toolExecutorService.execute_facebook_public_posts_search(toolArguments, projectId);
+        case 'tiktok_public_posts_search':
+            return await toolExecutorService.execute_tiktok_public_posts_search(toolArguments, projectId);
+        case 'facebook_create_post':
+            return await toolExecutorService.execute_facebook_create_post(toolArguments, projectId);
+        case 'tiktok_create_post':
+            return await toolExecutorService.execute_tiktok_create_post(toolArguments, projectId);
         default:
             console.error(`Agent: Unknown tool name in executeTool dispatcher: ${toolName}`);
             return JSON.stringify({ error: `Tool '${toolName}' is not recognized by the executeTool dispatcher.` });
