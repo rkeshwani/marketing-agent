@@ -68,6 +68,26 @@
             <div id="chat-section" style="display: none;"> <!-- Hidden initially -->
                 <h2>Chat with <span id="selected-objective-title">Objective Title</span></h2>
                 <button id="back-to-objectives-button" type="button">&larr; Back to Objectives</button>
+
+                <div id="plan-display-section" style="display: none; margin-bottom: 20px;">
+                    <h3>Proposed Plan</h3>
+                    <div id="plan-status-message" style="margin-bottom: 10px;"></div>
+                    <ul id="plan-steps-list">
+                        <!-- Plan steps will be dynamically inserted here -->
+                    </ul>
+                    <div id="plan-questions-area" style="display: none; margin-top: 15px;">
+                        <h4>Questions from your Assistant:</h4>
+                        <ul id="plan-questions-list">
+                            <!-- Questions will be dynamically inserted here -->
+                        </ul>
+                        <p><em>Please consider these questions. Your answers will help refine the strategy. You can provide answers in the chat once the plan is approved and active.</em></p>
+                    </div>
+                    <div id="plan-actions" style="margin-top: 15px;">
+                        <button id="approve-plan-btn">Approve Plan</button>
+                        <!-- <button id="reject-plan-btn">Request Changes</button> -->
+                    </div>
+                </div>
+
                 <div id="chat-container">
                     <div id="chat-output">
                         <div class="message agent-message">Welcome! Select a project and an objective to begin.</div>

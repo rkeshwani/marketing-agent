@@ -33,6 +33,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const userInputElement = document.getElementById('user-input');
     const sendButton = document.getElementById('send-button');
     const chatOutput = document.getElementById('chat-output');
+    const chatInputArea = document.getElementById('chat-input-area'); // Added
+
+    // Plan Display Elements
+    const planDisplaySection = document.getElementById('plan-display-section');
+    const planStatusMessage = document.getElementById('plan-status-message');
+    const planStepsList = document.getElementById('plan-steps-list');
+    const planQuestionsArea = document.getElementById('plan-questions-area');
+    const planQuestionsList = document.getElementById('plan-questions-list');
+    const planActions = document.getElementById('plan-actions');
+    const approvePlanBtn = document.getElementById('approve-plan-btn');
+    // const rejectPlanBtn = document.getElementById('reject-plan-btn'); // If added
 
     // --- State ---
     let projects = [];
@@ -107,16 +118,139 @@ document.addEventListener('DOMContentLoaded', () => {
         objectivesSection.style.display = 'none';
         chatSection.style.display = 'block';
         userInputElement.value = ''; // Clear input field
+        clearContainer(chatOutput); // Clear previous chat messages before showing section
+        planDisplaySection.style.display = 'none'; // Initially hide plan
+        chatInputArea.style.display = 'none'; // Initially hide chat input
 
         if (selectedObjectiveId) {
             const objective = objectives.find(o => o.id === selectedObjectiveId);
             selectedObjectiveTitleElement.textContent = objective ? objective.title : "Objective";
-            await fetchChatHistory(selectedObjectiveId); // Fetch and render history
+            // Fetch and display plan will handle chat history fetching and UI visibility
+            await fetchAndDisplayPlan(selectedObjectiveId);
         } else {
             displayError("No objective selected for chat.", chatOutput, true);
             showObjectivesSection(); // Redirect if no objective ID
         }
     }
+
+    // --- Plan Functions ---
+    function renderPlan(plan) {
+        if (!planDisplaySection || !planStepsList || !planQuestionsList || !planStatusMessage || !approvePlanBtn || !chatInputArea || !planQuestionsArea) {
+            console.error("Plan display elements not found in DOM during renderPlan.");
+            return;
+        }
+
+        clearContainer(planStepsList);
+        clearContainer(planQuestionsList);
+
+        plan.steps = plan.steps || []; // Ensure steps is an array
+        plan.questions = plan.questions || []; // Ensure questions is an array
+
+        plan.steps.forEach(step => {
+            const li = document.createElement('li');
+            li.textContent = step;
+            planStepsList.appendChild(li);
+        });
+
+        if (plan.questions.length > 0) {
+            plan.questions.forEach(question => {
+                const li = document.createElement('li');
+                li.textContent = question;
+                planQuestionsList.appendChild(li);
+            });
+            planQuestionsArea.style.display = 'block';
+        } else {
+            planQuestionsArea.style.display = 'none';
+        }
+
+        approvePlanBtn.disabled = false; // Default to enabled unless changed
+
+        if (plan.status === 'pending_approval') {
+            planStatusMessage.textContent = 'This plan is awaiting your approval.';
+            approvePlanBtn.style.display = 'inline-block';
+            chatInputArea.style.display = 'none';
+            planDisplaySection.style.display = 'block';
+            clearContainer(chatOutput); // Clear any "loading chat" messages if plan is pending
+            addMessageToUI('agent', "Please review the proposed plan above. Approve it to start working on this objective.");
+        } else if (plan.status === 'approved') {
+            planStatusMessage.textContent = 'Plan approved! You can now proceed with the objective.';
+            approvePlanBtn.style.display = 'none';
+            chatInputArea.style.display = 'flex';
+            planDisplaySection.style.display = 'block';
+            // Fetch chat history only after plan is confirmed approved
+            fetchChatHistory(selectedObjectiveId);
+        } else { // No plan, or other statuses
+            planStatusMessage.textContent = 'No active plan.';
+            planDisplaySection.style.display = 'none';
+            chatInputArea.style.display = 'none';
+            // Potentially try to initialize if no plan status is known
+            // This case might be hit if plan is null/undefined
+            if (!plan.status && selectedObjectiveId) {
+                 // This path is more explicitly handled in fetchAndDisplayPlan's 404 case
+                 addMessageToUI('agent', "No plan information available. Attempting to initialize...");
+            }
+        }
+    }
+
+    async function fetchAndDisplayPlan(objectiveId) {
+        if (!objectiveId) {
+            planDisplaySection.style.display = 'none';
+            chatInputArea.style.display = 'none';
+            addMessageToUI('agent', 'Cannot display plan: Objective ID is missing.');
+            return;
+        }
+        try {
+            // In a real app, this would be: const planResponse = await fetch(`/api/objectives/${objectiveId}/plan`);
+            // Simulating fetch for objective details which include the plan
+            const objectiveResponse = await fetch(`/api/objectives/${objectiveId}`);
+
+            if (!objectiveResponse.ok) {
+                if (objectiveResponse.status === 404) {
+                    addMessageToUI('agent', 'Objective not found, cannot retrieve or initialize plan.');
+                    planDisplaySection.style.display = 'none';
+                    chatInputArea.style.display = 'none';
+                    return;
+                }
+                throw new Error(`Failed to fetch objective details: ${objectiveResponse.statusText}`);
+            }
+            const objectiveData = await objectiveResponse.json();
+
+            if (objectiveData && objectiveData.plan) {
+                 if (objectiveData.plan.status === 'pending_approval' || objectiveData.plan.status === 'approved') {
+                    renderPlan(objectiveData.plan);
+                } else if (!objectiveData.plan.steps || objectiveData.plan.steps.length === 0) {
+                    // Plan exists but is empty or in an unknown state, try to initialize
+                    addMessageToUI('agent', 'Current plan is empty or status is unclear. Attempting to initialize a new plan...');
+                    const initResponse = await fetch(`/api/objectives/${objectiveId}/initialize-agent`, { method: 'POST' });
+                    if (!initResponse.ok) throw new Error(`Failed to initialize plan: ${initResponse.statusText}`);
+                    const newObjectiveData = await initResponse.json(); // Expecting the full objective with the plan
+                    renderPlan(newObjectiveData.plan);
+                } else {
+                    // Plan exists but status is not one we explicitly handle for plan display (e.g. might be user modified)
+                    // For now, just render it. Might need more states later.
+                    renderPlan(objectiveData.plan);
+                }
+            } else {
+                // No plan object within the objective, or objectiveData is malformed - try to initialize.
+                addMessageToUI('agent', 'No plan found for this objective. Attempting to initialize a new plan...');
+                const initResponse = await fetch(`/api/objectives/${objectiveId}/initialize-agent`, { method: 'POST' });
+                if (!initResponse.ok) throw new Error(`Failed to initialize plan after finding no plan: ${initResponse.statusText}`);
+                const newObjectiveData = await initResponse.json();
+                renderPlan(newObjectiveData.plan);
+            }
+
+        } catch (error) {
+            console.error('Error in fetchAndDisplayPlan:', error);
+            const errorDisplayArea = planDisplaySection.style.display === 'none' ? chatOutput : planStatusMessage;
+            displayError(error.message, errorDisplayArea);
+            planDisplaySection.style.display = 'block'; // Ensure plan section is visible to show error
+            planStatusMessage.textContent = `Error: ${error.message}`; // show error in plan status
+            chatInputArea.style.display = 'none';
+            approvePlanBtn.style.display = 'none';
+            addMessageToUI('agent', `Could not load or initialize a plan: ${error.message}`);
+        }
+    }
+
 
     // --- Project Functions ---
     async function fetchProjects() {
@@ -274,23 +408,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchChatHistory(objectiveId) {
         if (!objectiveId) return;
-        clearContainer(chatOutput); // Clear previous chat messages
-        addMessageToUI('agent', 'Loading chat history...'); // Show loading message
+        // Ensure chat output is clear before loading, but don't add "Loading..." if plan is still pending
+        const objective = objectives.find(o => o.id === selectedObjectiveId);
+        if (objective && objective.plan && objective.plan.status !== 'approved') {
+            // If plan not approved, fetchChatHistory might have been called prematurely or state is off.
+            // renderPlan handles the initial message for pending_approval.
+            // console.warn("fetchChatHistory called but plan not approved. Chat should not be active.");
+            // return; // Exit if plan not approved. renderPlan should manage UI.
+        }
+
+        // Only proceed to show "Loading history..." if chat is actually supposed to be active.
+        // This is now implicitly handled because fetchChatHistory is called by renderPlan when status is 'approved'.
+        clearContainer(chatOutput);
+        addMessageToUI('agent', 'Loading chat history...');
+
         try {
-            const response = await fetch(`/api/objectives/${objectiveId}`);
+            const response = await fetch(`/api/objectives/${objectiveId}`); // Fetch full objective
             if (!response.ok) {
-                throw new Error(`Failed to fetch objective details: ${response.statusText}`);
+                throw new Error(`Failed to fetch objective details for chat history: ${response.statusText}`);
             }
-            const objective = await response.json();
-            clearContainer(chatOutput); // Clear "Loading..." message
-            if (objective && objective.chatHistory) {
-                currentChatHistory = objective.chatHistory;
+            const fetchedObjective = await response.json();
+            clearContainer(chatOutput); // Clear "Loading..."
+
+            if (fetchedObjective && fetchedObjective.chatHistory) {
+                currentChatHistory = fetchedObjective.chatHistory;
                 if (currentChatHistory.length === 0) {
                     addMessageToUI('agent', 'No chat history for this objective yet. Start the conversation!');
                 } else {
                     currentChatHistory.forEach(msg => {
-                        // Adapt message structure if necessary. Assuming server sends {speaker, content}
-                        // The dataStore.addMessageToObjectiveChat saves {speaker, content, timestamp}
                         addMessageToUI(msg.speaker, msg.content);
                     });
                 }
@@ -298,7 +443,7 @@ document.addEventListener('DOMContentLoaded', () => {
                  addMessageToUI('agent', 'Could not load chat history.');
             }
         } catch (error) {
-            clearContainer(chatOutput);
+            clearContainer(chatOutput); // Clear "Loading..." on error too
             displayError(`Error fetching chat history: ${error.message}`, chatOutput);
             addMessageToUI('agent', `Error loading history: ${error.message}`);
         }
@@ -353,6 +498,58 @@ document.addEventListener('DOMContentLoaded', () => {
     if (createObjectiveForm) createObjectiveForm.addEventListener('submit', handleCreateObjectiveSubmit);
     if (backToProjectsButton) backToProjectsButton.addEventListener('click', showProjectsSection);
     if (backToObjectivesButton) backToObjectivesButton.addEventListener('click', showObjectivesSection);
+
+    if (approvePlanBtn) {
+        approvePlanBtn.addEventListener('click', async () => {
+            if (!selectedObjectiveId) {
+                displayError('No objective selected to approve plan for.', planStatusMessage || chatOutput);
+                return;
+            }
+            approvePlanBtn.disabled = true; // Disable button to prevent multiple clicks
+            // planStatusMessage.textContent = 'Approving plan...'; // renderPlan will handle messages
+            addMessageToUI('agent', 'Approving plan...');
+
+
+            try {
+                const response = await fetch(`/api/objectives/${selectedObjectiveId}/plan/approve`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json', // Though not strictly necessary for this POST if no body
+                    },
+                    // No body is needed for this specific request as per current backend design
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: `Failed to approve plan. Server responded with ${response.status}` }));
+                    throw new Error(errorData.error || `Server error: ${response.status}`);
+                }
+
+                const updatedObjective = await response.json(); // Expecting the full objective back
+
+                if (updatedObjective && updatedObjective.plan) {
+                    // Update the local objectives array
+                    const objectiveIndex = objectives.findIndex(o => o.id === selectedObjectiveId);
+                    if (objectiveIndex !== -1) {
+                        objectives[objectiveIndex] = updatedObjective; // Update the whole objective
+                    } else {
+                        // If for some reason it's not in the list, add it (less likely scenario)
+                        objectives.push(updatedObjective);
+                    }
+                    renderPlan(updatedObjective.plan); // Re-render the plan section with the new status
+                    // The 'Plan approved!' message and chat activation is handled by renderPlan
+                } else {
+                    throw new Error('Received an invalid response after approving plan.');
+                }
+
+            } catch (error) {
+                console.error('Error approving plan:', error);
+                // Use displayError for consistency, or keep addMessageToUI if preferred for chat-like feedback
+                displayError(`Approval failed: ${error.message}`, planStatusMessage); // Show error in plan status area
+                approvePlanBtn.disabled = false; // Re-enable button on error
+                addMessageToUI('agent', `Failed to approve plan: ${error.message}`); // Also add to chat
+            }
+        });
+    }
 
     // Event listeners for new social media connect buttons
     if (connectFacebookBtn) {

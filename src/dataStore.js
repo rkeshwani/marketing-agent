@@ -81,11 +81,14 @@ function findObjectiveById(objectiveId) {
     return objectives.find(o => o.id === objectiveId);
 }
 
-function updateObjectiveById(objectiveId, title, brief) {
+function updateObjectiveById(objectiveId, title, brief, plan) {
     const objective = findObjectiveById(objectiveId);
     if (objective) {
         objective.title = title !== undefined ? title : objective.title;
         objective.brief = brief !== undefined ? brief : objective.brief;
+        if (plan !== undefined) {
+            objective.plan = plan;
+        }
         objective.updatedAt = new Date();
         return objective;
     }

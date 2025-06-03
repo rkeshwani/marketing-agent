@@ -5,6 +5,11 @@ class Objective {
         this.projectId = projectId;
         this.title = title;
         this.brief = brief;
+        this.plan = {
+            steps: [],
+            status: 'pending_approval',
+            questions: [],
+        };
         this.chatHistory = []; // Initialize with an empty array
         this.createdAt = new Date();
         this.updatedAt = new Date();

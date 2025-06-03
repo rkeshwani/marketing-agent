@@ -3,7 +3,7 @@ const path = require('path'); // Import the 'path' module
 const axios = require('axios'); // For making HTTP requests
 const session = require('express-session'); // For session management
 const crypto = require('crypto'); // For generating 'state' string
-const agent = require('./agent');
+const { getAgentResponse, initializeAgent } = require('./agent'); // Modified to import initializeAgent
 const Project = require('./models/Project');
 const Objective = require('./models/Objective');
 const dataStore = require('./dataStore');
@@ -118,6 +118,58 @@ app.get('/auth/facebook/callback', async (req, res) => {
         console.error('Facebook auth callback processing error:', errorMessage, error.response ? error.response.data : '');
         delete req.session[state];
         res.redirect(`/?message=Error+connecting+Facebook:+${encodeURIComponent(errorMessage)}&status=error`);
+    }
+});
+
+// POST /api/objectives/:objectiveId/plan/approve - Approve the plan for an objective
+app.post('/api/objectives/:objectiveId/plan/approve', (req, res) => {
+    const { objectiveId } = req.params;
+    try {
+        const objective = dataStore.findObjectiveById(objectiveId);
+
+        if (!objective) {
+            return res.status(404).json({ error: 'Objective not found to approve plan for' });
+        }
+
+        if (!objective.plan) {
+            // This case should ideally not be hit if objectives always initialize with a plan structure
+            return res.status(404).json({ error: 'Plan not found for this objective. Initialize it first.' });
+        }
+
+        objective.plan.status = 'approved';
+        objective.updatedAt = new Date(); // Also update the objective's updatedAt timestamp
+
+        // dataStore.updateObjectiveById was already modified to handle plan updates
+        const updatedObjective = dataStore.updateObjectiveById(objective.id, objective.title, objective.brief, objective.plan);
+
+        if (!updatedObjective) {
+            // This might happen if findObjectiveById found it, but updateObjectiveById failed internally
+            // which is unlikely given current dataStore logic but good to be defensive.
+            console.error(`Failed to update objective ${objectiveId} after attempting to approve plan.`);
+            return res.status(500).json({ error: 'Failed to save approved plan status.' });
+        }
+
+        res.status(200).json(updatedObjective);
+
+    } catch (error) {
+        console.error(`Error approving plan for objective ${objectiveId}:`, error);
+        res.status(500).json({ error: 'Failed to approve plan due to a server error.' });
+    }
+});
+
+// POST /api/objectives/:objectiveId/initialize-agent - Initialize agent and generate plan
+app.post('/api/objectives/:objectiveId/initialize-agent', async (req, res) => {
+    const { objectiveId } = req.params;
+    try {
+        const updatedObjective = await initializeAgent(objectiveId); // Corrected: use initializeAgent
+        res.status(200).json(updatedObjective);
+    } catch (error) {
+        console.error(`Error initializing agent for objective ${objectiveId}:`, error);
+        if (error.message.includes('not found')) {
+            res.status(404).json({ error: error.message });
+        } else {
+            res.status(500).json({ error: 'Failed to initialize agent for objective' });
+        }
     }
 });
 
@@ -516,7 +568,7 @@ app.post('/api/objectives/:objectiveId/chat', async (req, res) => {
         }
 
         // Get agent response using the objective's specific chat history
-        const agentResponse = await agent.getAgentResponse(userInput, objective.chatHistory);
+        const agentResponse = await getAgentResponse(userInput, objective.chatHistory, objectiveId);
 
         // Add user message to objective's chat history
         dataStore.addMessageToObjectiveChat(objectiveId, 'user', userInput);
@@ -549,7 +601,11 @@ app.post('/api/chat', async (req, res) => {
     // chatHistory can be optional or defaults to an empty array if not provided
     const history = chatHistory || [];
 
-    const agentResponse = await agent.getAgentResponse(userInput, history);
+    // For this generic /api/chat endpoint, there's no objectiveId.
+    // The getAgentResponse now requires it. This endpoint is problematic.
+    // For now, I'll pass null or undefined, and getAgentResponse will handle it by returning an error message.
+    // This endpoint should likely be removed or re-thought if objective-specific context is always required.
+    const agentResponse = await getAgentResponse(userInput, history, null);
     res.json({ response: agentResponse });
   } catch (error) {
     console.error('API Error:', error);
