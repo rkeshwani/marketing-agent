@@ -25,6 +25,10 @@ class Project {
         this.googleDriveAccessToken = null;
         this.googleDriveRefreshToken = null;
         this.assets = []; // This will be an array of asset objects
+
+        // Project context fields
+        this.projectContextQuestions = [];
+        this.projectContextAnswers = {};
     }
 }
 

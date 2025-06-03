@@ -136,4 +136,127 @@ If you have no questions, write "QUESTIONS: None".
 module.exports = {
   fetchGeminiResponse,
   generatePlanForObjective, // Export the new function
+  generateProjectContextQuestions,
+  structureProjectContextAnswers,
 };
+
+// --- New Function: generateProjectContextQuestions ---
+
+/**
+ * Generates questions to understand a project's context using Gemini.
+ * @param {string} projectName The name of the project.
+ * @param {string} projectDescription The description of the project.
+ * @returns {Promise<Array<string>>} A promise that resolves to an array of question strings.
+ */
+async function generateProjectContextQuestions(projectName, projectDescription) {
+  console.log('GeminiService (generateProjectContextQuestions): Received project details - Name:', projectName);
+
+  const prompt = `
+Project Name: "${projectName}"
+Project Description: "${projectDescription}"
+
+Based on the project name and description, please generate 3-5 questions to help me understand the project's context more deeply.
+These questions should cover:
+- The project's relation to my overall brand.
+- Any specific branding standards or guidelines I need to adhere to.
+- The desired voice and tone for the project's communications.
+- The specific feeling or emotion the project aims to evoke in the target audience.
+
+Return ONLY a JSON string array of the questions. For example:
+["Question 1?", "Question 2?", "What is the primary goal of this project?"]
+  `.trim();
+
+  console.log('GeminiService (generateProjectContextQuestions): Sending prompt to Gemini:\n', prompt);
+
+  try {
+    // In a real scenario, fetchGeminiResponse would be a generic function.
+    // For this subtask, we'll assume it can handle this prompt and might return a JSON string.
+    // We might need to adjust fetchGeminiResponse or add a new specialized function if its
+    // current simulation logic interferes. For now, let's proceed.
+    const geminiResponseString = await fetchGeminiResponse(prompt, []); // No chat history or assets needed for this
+
+    console.log('GeminiService (generateProjectContextQuestions): Received raw response from Gemini:\n', geminiResponseString);
+
+    // Attempt to parse the response as JSON
+    let parsedQuestions = JSON.parse(geminiResponseString);
+
+    if (!Array.isArray(parsedQuestions)) {
+      console.error('GeminiService (generateProjectContextQuestions): Parsed response is not an array. Response:', parsedQuestions);
+      // Return a default set of questions or an empty array as per requirements
+      return ["What are the key objectives for this project?", "Who is the primary target audience?", "Are there any existing brand guidelines or assets I should be aware of?"];
+    }
+
+    // Ensure all elements are strings (basic validation)
+    parsedQuestions = parsedQuestions.filter(q => typeof q === 'string');
+
+    console.log('GeminiService (generateProjectContextQuestions): Parsed questions successfully:', parsedQuestions);
+    return parsedQuestions;
+
+  } catch (error) {
+    console.error('GeminiService (generateProjectContextQuestions): Error parsing Gemini response or other issue:', error);
+    // Return default questions in case of any error (parsing, API call, etc.)
+    return ["What are the key objectives for this project?", "Who is the primary target audience?", "Are there any existing brand guidelines or assets I should be aware of?", "What is the desired tone and voice for this project?"];
+  }
+}
+
+// --- New Function: structureProjectContextAnswers ---
+
+/**
+ * Structures user answers about project context into a JSON object using Gemini.
+ * @param {string} projectName The name of the project.
+ * @param {string} projectDescription The description of the project.
+ * @param {string} userAnswersString A string containing the user's answers to context questions.
+ * @returns {Promise<Object>} A promise that resolves to a structured JSON object of the context.
+ */
+async function structureProjectContextAnswers(projectName, projectDescription, userAnswersString) {
+  console.log('GeminiService (structureProjectContextAnswers): Received project details - Name:', projectName);
+  console.log('GeminiService (structureProjectContextAnswers): User answers string:', userAnswersString);
+
+  const prompt = `
+Project Name: "${projectName}"
+Project Description: "${projectDescription}"
+User Answers to Context Questions:
+"${userAnswersString}"
+
+Based on the project name, description, and the user's answers, please analyze and structure this information into a concise JSON object.
+This object should summarize the key aspects of the project's context, including (but not limited to):
+- brandIdentity: A summary of how the project relates to the user's overall brand.
+- projectVoice: The desired voice and tone for the project.
+- desiredFeeling: The feeling or emotion the project should evoke.
+- keyPoints: An array of crucial takeaways, requirements, or constraints mentioned by the user.
+
+Return ONLY the JSON object. For example:
+{
+  "brandIdentity": "The project is a core part of our new 'Innovate Everyday' campaign and should reflect our company's commitment to cutting-edge solutions.",
+  "projectVoice": "Professional yet approachable, inspiring confidence.",
+  "desiredFeeling": "Users should feel empowered and excited about the possibilities.",
+  "keyPoints": ["Adherence to the new blue color palette is mandatory.", "Target audience is young professionals aged 25-35.", "Launch date is critical."]
+}
+  `.trim();
+
+  console.log('GeminiService (structureProjectContextAnswers): Sending prompt to Gemini:\n', prompt);
+
+  try {
+    // Assuming fetchGeminiResponse can handle this prompt and is expected to return a JSON string.
+    const geminiResponseString = await fetchGeminiResponse(prompt, []); // No chat history or assets
+
+    console.log('GeminiService (structureProjectContextAnswers): Received raw response from Gemini:\n', geminiResponseString);
+
+    // Attempt to parse the response as JSON
+    let structuredContext = JSON.parse(geminiResponseString);
+
+    if (typeof structuredContext !== 'object' || structuredContext === null || Array.isArray(structuredContext)) {
+      console.error('GeminiService (structureProjectContextAnswers): Parsed response is not a valid object. Response:', structuredContext);
+      // Return a default error structure or an empty object
+      return { error: "Failed to structure project context.", details: "Response was not a valid JSON object." };
+    }
+
+    console.log('GeminiService (structureProjectContextAnswers): Structured context successfully:', structuredContext);
+    return structuredContext;
+
+  } catch (error) {
+    console.error('GeminiService (structureProjectContextAnswers): Error parsing Gemini response or other issue:', error);
+    // Return default error structure in case of any error
+    return { error: "Failed to structure project context.", details: error.message };
+  }
+}
