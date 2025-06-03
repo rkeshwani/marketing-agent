@@ -1,77 +1,197 @@
+/* public/style.css */
 body {
     font-family: sans-serif;
     margin: 0;
     background-color: #f4f4f4;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
+    color: #333;
+    line-height: 1.6;
 }
 
-#chat-container {
-    background-color: #fff;
+#app-container {
+    max-width: 1000px;
+    margin: auto;
+    overflow: hidden;
+    padding: 0 20px 20px 20px;
+}
+
+header {
+    background: #333;
+    color: #fff;
+    padding: 1rem 0;
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+header h1 {
+    margin: 0;
+}
+
+main {
+    background: #fff;
+    padding: 20px;
     border-radius: 8px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    width: 90%;
-    max-width: 600px;
-    height: 80vh;
-    max-height: 700px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+/* Project and Objective Sections */
+#projects-section, #objectives-section, #chat-section {
+    margin-bottom: 30px;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+}
+
+#projects-section h2, #objectives-section h2, #chat-section h2 {
+    color: #333;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+    margin-top: 0;
+}
+
+#create-project-form-container, #create-objective-form-container {
+    margin-top: 20px;
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 5px;
+}
+
+#create-project-form div, #create-objective-form div {
+    margin-bottom: 10px;
+}
+
+#create-project-form label, #create-objective-form label {
+    display: block;
+    margin-bottom: 5px;
+}
+
+#create-project-form input[type="text"],
+#create-project-form textarea,
+#create-objective-form input[type="text"],
+#create-objective-form textarea {
+    width: 95%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+#create-project-form textarea, #create-objective-form textarea {
+    min-height: 60px;
+    resize: vertical;
+}
+
+button {
+    background: #5cb85c;
+    color: white;
+    border: 0;
+    padding: 10px 15px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 1em;
+}
+
+button:hover {
+    background: #4cae4c;
+}
+
+.project-list, .objective-list {
+    list-style: none;
+    padding: 0;
+}
+
+.project-item, .objective-item {
+    background: #fff;
+    border: 1px solid #eee;
+    padding: 10px 15px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.project-item:hover, .objective-item:hover {
+    background: #f0f0f0;
+}
+
+.project-description {
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 5px;
+}
+
+.error-message {
+    color: red;
+    font-weight: bold;
+    margin-top: 10px;
+}
+
+/* Chat Area Styling (from original, slightly adapted) */
+#chat-container {
     display: flex;
     flex-direction: column;
+    height: 400px; /* Or adjust as needed */
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    overflow: hidden;
 }
 
 #chat-output {
     flex-grow: 1;
-    padding: 20px;
+    padding: 10px;
     overflow-y: auto;
-    border-bottom: 1px solid #eee;
+    background-color: #f9f9f9;
+    display: flex;
+    flex-direction: column;
 }
 
 .message {
-    margin-bottom: 15px;
-    padding: 10px 15px;
-    border-radius: 18px;
-    line-height: 1.4;
-    max-width: 80%;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+    border-radius: 15px;
+    max-width: 70%;
+    word-wrap: break-word;
 }
 
 .user-message {
     background-color: #007bff;
     color: white;
-    margin-left: auto;
+    align-self: flex-end;
     border-bottom-right-radius: 5px;
 }
 
 .agent-message {
     background-color: #e9ecef;
     color: #333;
-    margin-right: auto;
+    align-self: flex-start;
     border-bottom-left-radius: 5px;
 }
 
 #chat-input-area {
     display: flex;
-    padding: 15px;
-    border-top: 1px solid #eee;
+    padding: 10px;
+    border-top: 1px solid #ccc;
+    background-color: #fff;
 }
 
 #user-input {
     flex-grow: 1;
     padding: 10px;
-    border: 1px solid #ccc;
+    border: 1px solid #ddd;
     border-radius: 20px;
     margin-right: 10px;
 }
 
-#send-button {
-    padding: 10px 20px;
-    background-color: #007bff;
-    color: white;
-    border: none;
-    border-radius: 20px;
-    cursor: pointer;
+#send-button { /* Re-style send button if needed, or ensure general button style applies */
+    background: #007bff;
+    min-width: 80px;
+}
+#send-button:hover {
+    background: #0056b3;
 }
 
-#send-button:hover {
-    background-color: #0056b3;
+
+footer {
+    text-align: center;
+    padding: 20px 0;
+    margin-top: 30px;
+    color: #777;
+    font-size: 0.9em;
 }
