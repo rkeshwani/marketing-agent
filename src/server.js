@@ -28,6 +28,14 @@ const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET || 'YOUR_TIKTOK_CL
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID'; // Added
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || 'YOUR_GOOGLE_CLIENT_SECRET'; // Added
 const GOOGLE_REDIRECT_URI = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/auth/google/callback` : `http://localhost:${port}/auth/google/callback`; // Added
+
+// LinkedIn App Configuration
+const config = require('./config/config'); // Added to import config
+const LINKEDIN_APP_ID = config.LINKEDIN_APP_ID || 'YOUR_LINKEDIN_APP_ID';
+const LINKEDIN_APP_SECRET = config.LINKEDIN_APP_SECRET || 'YOUR_LINKEDIN_APP_SECRET';
+const LINKEDIN_REDIRECT_URI = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/auth/linkedin/callback` : `http://localhost:${port}/auth/linkedin/callback`;
+const LINKEDIN_SCOPES = 'r_liteprofile r_emailaddress w_member_social'; // Added scopes
+
 const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${port}`;
 
 // --- Google OAuth2 Client ---
@@ -56,6 +64,148 @@ app.use(session({
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // === SOCIAL MEDIA AUTHENTICATION ROUTES ===
+
+// --- LinkedIn Auth ---
+// Step 1: Redirect user to LinkedIn for authentication
+app.get('/auth/linkedin', (req, res) => {
+    const state = crypto.randomBytes(16).toString('hex');
+    req.session[state] = { initiated: true, service: 'linkedin' }; // Store state server-side
+
+    const linkedinAuthUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code` +
+        `&client_id=${LINKEDIN_APP_ID}` +
+        `&redirect_uri=${LINKEDIN_REDIRECT_URI}` +
+        `&state=${state}` +
+        `&scope=${LINKEDIN_SCOPES}`;
+
+    res.redirect(linkedinAuthUrl);
+});
+
+// Step 2: LinkedIn callback with authorization code
+app.get('/auth/linkedin/callback', async (req, res) => {
+    const { code, state, error: liError, error_description: liErrorDescription } = req.query;
+    const sessionState = req.session[state];
+
+    if (liError) {
+        console.error(`LinkedIn auth callback error: ${liError} - ${liErrorDescription}`, req.query);
+        if (sessionState) delete req.session[state];
+        return res.redirect(`/?message=Error+connecting+LinkedIn:+${encodeURIComponent(liErrorDescription || 'Authentication_failed')}&status=error`);
+    }
+
+    if (!sessionState || !sessionState.initiated || sessionState.service !== 'linkedin') {
+        console.error('LinkedIn auth callback error: Invalid state or session expired.', { queryState: state, sessionStateExists: !!sessionState });
+        if (sessionState) delete req.session[state];
+        return res.redirect('/?message=Error+connecting+LinkedIn:+Invalid+session+or+state&status=error');
+    }
+
+    if (!code) {
+        console.error('LinkedIn auth callback error: No code provided, but no error from LinkedIn.', req.query);
+        delete req.session[state];
+        return res.redirect('/?message=Error+connecting+LinkedIn:+Authentication+code+missing&status=error');
+    }
+
+    try {
+        // Exchange code for access token
+        const tokenResponse = await axios.post(`https://www.linkedin.com/oauth/v2/accessToken`, new URLSearchParams({
+            grant_type: 'authorization_code',
+            code: code,
+            redirect_uri: LINKEDIN_REDIRECT_URI,
+            client_id: LINKEDIN_APP_ID,
+            client_secret: LINKEDIN_APP_SECRET
+        }), {
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+        });
+
+        const accessToken = tokenResponse.data.access_token;
+        if (!accessToken) {
+            console.error('LinkedIn auth callback error: No access token received from LinkedIn.', tokenResponse.data);
+            delete req.session[state];
+            return res.redirect('/?message=Error+connecting+LinkedIn:+Failed+to+obtain+access+token&status=error');
+        }
+
+        // Fetch basic profile information
+        const profileResponse = await axios.get(`https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName)`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+
+        const linkedInUserId = profileResponse.data.id;
+        const linkedInUserFirstName = profileResponse.data.localizedFirstName;
+        const linkedInUserLastName = profileResponse.data.localizedLastName;
+
+        // Fetch primary email address
+        const emailResponse = await axios.get(`https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))`, {
+            headers: { 'Authorization': `Bearer ${accessToken}` }
+        });
+
+        const linkedInUserEmail = emailResponse.data.elements[0]['handle~'].emailAddress;
+
+        // Store token and user info in session
+        req.session[state].linkedinAccessToken = accessToken;
+        req.session[state].linkedinUserID = linkedInUserId;
+        req.session[state].linkedinUserFirstName = linkedInUserFirstName;
+        req.session[state].linkedinUserLastName = linkedInUserLastName;
+        req.session[state].linkedinUserEmail = linkedInUserEmail;
+
+        // Redirect to a frontend page for finalization
+        res.redirect(`/finalize-project.html?state=${state}&service=linkedin`);
+
+    } catch (error) {
+        const errorMessage = error.response && error.response.data && error.response.data.error_description ?
+                             error.response.data.error_description :
+                             (error.response && error.response.data && error.response.data.error ? error.response.data.error : error.message);
+        console.error('LinkedIn auth callback processing error:', errorMessage, error.response ? error.response.data : '');
+        delete req.session[state];
+        res.redirect(`/?message=Error+connecting+LinkedIn:+${encodeURIComponent(errorMessage)}&status=error`);
+    }
+});
+
+// --- LinkedIn Project Finalization API ---
+app.post('/api/linkedin/finalize-project', (req, res) => {
+    const { state, projectName, projectDescription } = req.body;
+
+    if (!projectName) {
+        return res.status(400).json({ error: 'Project name is required.' });
+    }
+    if (!state) {
+        return res.status(400).json({ error: 'Missing state field. Cannot finalize project.' });
+    }
+
+    const sessionState = req.session[state];
+    if (!sessionState ||
+        sessionState.service !== 'linkedin' ||
+        !sessionState.initiated ||
+        !sessionState.linkedinAccessToken ||
+        !sessionState.linkedinUserID
+    ) {
+        console.error('API /api/linkedin/finalize-project error: Invalid session state or missing LinkedIn data.', { bodyState: state, sessionDataExists: !!sessionState });
+        return res.status(400).json({ error: 'Invalid session state or required LinkedIn connection data not found. Please try reconnecting your LinkedIn account.' });
+    }
+
+    try {
+        // Assuming LINKEDIN_SCOPES is a string of space-separated scopes
+        const permissionsArray = LINKEDIN_SCOPES ? LINKEDIN_SCOPES.split(' ') : [];
+
+        const projectData = {
+            name: projectName,
+            description: projectDescription || '',
+            linkedinAccessToken: sessionState.linkedinAccessToken,
+            linkedinUserID: sessionState.linkedinUserID,
+            linkedinUserFirstName: sessionState.linkedinUserFirstName,
+            linkedinUserLastName: sessionState.linkedinUserLastName,
+            linkedinUserEmail: sessionState.linkedinUserEmail,
+            linkedinPermissions: permissionsArray, // Use the scopes defined at the top
+        };
+
+        const newProject = dataStore.addProject(projectData);
+        delete req.session[state]; // Clean up session
+        res.status(201).json(newProject);
+
+    } catch (error) {
+        console.error('Error in POST /api/linkedin/finalize-project while saving project:', error);
+        res.status(500).json({ error: 'Failed to save LinkedIn project data. Please try again.' });
+    }
+});
 
 // --- Facebook Auth ---
 // Step 1: Redirect user to Facebook for authentication

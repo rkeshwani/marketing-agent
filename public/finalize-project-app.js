@@ -79,6 +79,44 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                  displayMessage('Error: State missing for Facebook redirection. Cannot proceed.', true, true);
             }
+        } else if (service === 'linkedin') {
+            displayMessage('Finalizing LinkedIn connection... Please wait.');
+            try {
+                const response = await fetch('/api/linkedin/finalize-project', { // Ensure this endpoint exists or will be created
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        state: state,
+                        projectName: pendingProjectName,
+                        projectDescription: pendingProjectDescription
+                    })
+                });
+
+                if (!response.ok) {
+                    let errorMsg = `Server error: ${response.status}.`;
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorMsg;
+                    } catch (e) {
+                        // Response not JSON
+                    }
+                    throw new Error(`${errorMsg} Please ensure all details are correct or try reconnecting LinkedIn.`);
+                }
+
+                // const newProject = await response.json(); // Data available if needed
+                sessionStorage.removeItem('pendingProjectName');
+                sessionStorage.removeItem('pendingProjectDescription');
+
+                window.location.href = `/?message=Project+successfully+created+and+connected+with+LinkedIn!&status=success`;
+
+            } catch (error) {
+                console.error('Error finalizing LinkedIn project:', error);
+                if (error instanceof TypeError) {
+                    displayMessage('A network error occurred while finalizing the LinkedIn connection. Please check your internet connection and try again.', true, true);
+                } else {
+                    displayMessage(`Error creating project with LinkedIn: ${error.message}`, true, true);
+                }
+            }
         } else {
             displayMessage(`Error: Unknown or unsupported service type ('${service}') requested for finalization. Cannot proceed.`, true, true);
         }

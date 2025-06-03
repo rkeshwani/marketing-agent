@@ -39,7 +39,7 @@ This project is an AI-powered social media management tool that helps users stre
 
 ### 2. Connecting Social Media Accounts
 - Navigate to the project settings.
-- Connect your Facebook and TikTok accounts by providing the necessary authorizations.
+- Connect your Facebook, TikTok, and LinkedIn accounts by providing the necessary authorizations.
 - Connect Google Drive for asset management within your projects.
 
 ### 3. Managing Objectives
@@ -100,9 +100,19 @@ The following environment variables are required to run the application. Create 
 - **`GOOGLE_CLIENT_SECRET`**: Your Google Client Secret.
 - **`GOOGLE_REDIRECT_URI`**: The callback URI for Google OAuth. This is typically `${APP_BASE_URL}/auth/google/callback`. Ensure this is registered in your Google Cloud Console credentials.
 
+- **`LINKEDIN_APP_ID`**: Your LinkedIn Application ID (Client ID). Get this from the [LinkedIn Developer Portal](https://www.linkedin.com/developers/apps).
+- **`LINKEDIN_APP_SECRET`**: Your LinkedIn Application Secret (Client Secret). Found in your LinkedIn app settings.
+    - **Important for LinkedIn Callback**: Ensure you add `${APP_BASE_URL}/auth/linkedin/callback` as an authorized redirect URI in your LinkedIn app settings.
+
 ### AI Agent API Key
 
 - **`GEMINI_API_KEY`**: API key for the Gemini AI language model service.
+
+### LinkedIn Scopes and Permissions
+The application requires the following OAuth scopes for LinkedIn integration. These are requested during the "Connect LinkedIn" process:
+- **`r_liteprofile`**: Used to retrieve your basic profile information, such as your name and LinkedIn ID. This helps in personalizing the connection within the app.
+- **`r_emailaddress`**: Used to fetch the primary email address associated with your LinkedIn account. This can be used for identification or communication if needed.
+- **`w_member_social`**: Required to post content (shares or User Generated Content - UGC posts) to LinkedIn on your behalf. This is essential for the "post_to_linkedin" tool.
 
 **Note:** Ensure that you have configured the redirect URIs and other necessary settings correctly in the respective developer portals for the connected services.
 For Node.js version, refer to the `engines` field in `package.json` if present, or use a recent LTS version. For npm, it usually comes bundled with Node.js.

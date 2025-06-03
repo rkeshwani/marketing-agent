@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // New buttons for social media connection
     const connectFacebookBtn = document.getElementById('connect-facebook-btn');
     const connectTiktokBtn = document.getElementById('connect-tiktok-btn');
+    const connectLinkedinBtn = document.getElementById('connect-linkedin-btn'); // Added LinkedIn button
 
     const objectiveListContainer = document.getElementById('objective-list-container');
     const createObjectiveForm = document.getElementById('create-objective-form');
@@ -919,6 +920,20 @@ document.addEventListener('DOMContentLoaded', () => {
             sessionStorage.setItem('pendingProjectName', name);
             sessionStorage.setItem('pendingProjectDescription', description);
             window.location.href = '/auth/tiktok';
+        });
+    }
+
+    if (connectLinkedinBtn) { // Added event listener for LinkedIn
+        connectLinkedinBtn.addEventListener('click', () => {
+            const name = projectNameInput.value.trim();
+            const description = projectDescriptionInput.value.trim();
+            if (!name) {
+                displayError('Project name is required before connecting.', createProjectForm);
+                return;
+            }
+            sessionStorage.setItem('pendingProjectName', name);
+            sessionStorage.setItem('pendingProjectDescription', description);
+            window.location.href = '/auth/linkedin';
         });
     }
 

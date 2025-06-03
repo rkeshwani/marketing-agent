@@ -35,6 +35,10 @@ const config = {
   // E2B Code Interpreter API Key
   E2B_API_KEY: process.env.E2B_API_KEY || '',
 
+  // LinkedIn App Configuration
+  LINKEDIN_APP_ID: process.env.LINKEDIN_APP_ID || '',
+  LINKEDIN_APP_SECRET: process.env.LINKEDIN_APP_SECRET || '',
+
   // Add other configurations as needed
 };
 

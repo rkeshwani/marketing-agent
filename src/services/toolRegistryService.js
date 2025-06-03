@@ -216,6 +216,20 @@ const toolSchemas = [
         },
         required: ["asset_id", "modification_prompt", "output_asset_type"]
     }
+  },
+  {
+    name: "post_to_linkedin",
+    description: "Posts content to the user's connected LinkedIn profile. Takes the content text as input.",
+    parameters: {
+      type: "object",
+      properties: {
+        content: {
+          type: "string",
+          description: "The text content to post to LinkedIn."
+        }
+      },
+      required: ["content"]
+    }
   }
 ];
 
