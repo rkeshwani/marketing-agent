@@ -117,6 +117,22 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Project Context Modal -->
+            <div id="project-context-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close-button" id="close-context-modal-btn">&times;</span>
+                    <h2>Project Context Questions</h2>
+                    <p>Please answer these questions to help the agent understand your project better.</p>
+                    <form id="context-answers-form">
+                        <div id="context-questions-container">
+                            <!-- Questions and textareas will be dynamically inserted here -->
+                        </div>
+                        <button type="submit" id="submit-context-answers-btn" style="margin-top: 15px;">Submit Answers</button>
+                    </form>
+                </div>
+            </div>
+
         </main>
 
         <footer>

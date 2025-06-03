@@ -8,6 +8,7 @@ const multer = require('multer'); // Added for file uploads
 const stream = require('stream'); // Added for Google Drive file upload
 const vectorService = require('./services/vectorService'); // Added for embeddings
 const { getAgentResponse, initializeAgent } = require('./agent'); // Modified to import initializeAgent
+const { generateProjectContextQuestions, structureProjectContextAnswers } = require('./services/geminiService'); // Added for project context
 const Project = require('./models/Project');
 const Objective = require('./models/Objective');
 const dataStore = require('./dataStore');
@@ -135,6 +136,72 @@ app.get('/auth/facebook/callback', async (req, res) => {
         console.error('Facebook auth callback processing error:', errorMessage, error.response ? error.response.data : '');
         delete req.session[state];
         res.redirect(`/?message=Error+connecting+Facebook:+${encodeURIComponent(errorMessage)}&status=error`);
+    }
+});
+
+// --- PROJECT CONTEXT API ENDPOINTS ---
+
+// POST /api/projects/:projectId/context-questions - Generate and store context questions
+app.post('/api/projects/:projectId/context-questions', async (req, res) => {
+    const { projectId } = req.params;
+    try {
+        const project = dataStore.findProjectById(projectId);
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const questions = await generateProjectContextQuestions(project.name, project.description);
+
+        // Ensure project.projectContextQuestions is initialized if it's not already
+        project.projectContextQuestions = questions;
+
+        const updatedProjectResult = dataStore.updateProjectById(projectId, { projectContextQuestions: questions });
+        if (!updatedProjectResult) {
+             // This case should ideally not happen if findProjectById succeeded
+            console.error(`Failed to update project ${projectId} with context questions.`);
+            return res.status(500).json({ error: 'Failed to save context questions to project.' });
+        }
+
+        res.status(200).json(questions);
+
+    } catch (error) {
+        console.error(`Error generating context questions for project ${projectId}:`, error);
+        res.status(500).json({ error: 'Failed to generate project context questions due to a server error.' });
+    }
+});
+
+// POST /api/projects/:projectId/context-answers - Submit and structure context answers
+app.post('/api/projects/:projectId/context-answers', async (req, res) => {
+    const { projectId } = req.params;
+    const { userAnswersString } = req.body;
+
+    if (!userAnswersString) {
+        return res.status(400).json({ error: 'userAnswersString is required in the request body.' });
+    }
+
+    try {
+        const project = dataStore.findProjectById(projectId);
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found' });
+        }
+
+        const structuredAnswers = await structureProjectContextAnswers(project.name, project.description, userAnswersString);
+
+        // Ensure project.projectContextAnswers is initialized
+        project.projectContextAnswers = structuredAnswers;
+
+        const updatedProjectResult = dataStore.updateProjectById(projectId, { projectContextAnswers: structuredAnswers });
+         if (!updatedProjectResult) {
+            // This case should ideally not happen if findProjectById succeeded
+            console.error(`Failed to update project ${projectId} with structured context answers.`);
+            return res.status(500).json({ error: 'Failed to save structured context answers to project.' });
+        }
+
+        res.status(200).json({ message: 'Context answers submitted and structured successfully', projectContextAnswers: structuredAnswers });
+
+    } catch (error) {
+        console.error(`Error processing context answers for project ${projectId}:`, error);
+        res.status(500).json({ error: 'Failed to process project context answers due to a server error.' });
     }
 });
 

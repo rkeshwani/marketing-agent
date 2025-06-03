@@ -54,6 +54,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const uploadStatusMessage = document.getElementById('upload-status-message');
     const backToProjectsFromAssetsButton = document.getElementById('back-to-projects-from-assets-button');
 
+    // Project Context Modal Elements
+    const projectContextModal = document.getElementById('project-context-modal');
+    const contextQuestionsContainer = document.getElementById('context-questions-container');
+    const submitContextAnswersBtn = document.getElementById('submit-context-answers-btn');
+    const closeContextModalBtn = document.getElementById('close-context-modal-btn'); // Optional, ensure it exists in HTML
+    const contextAnswersForm = document.getElementById('context-answers-form'); // Ensure this form wraps questions and submit button
+
 
     // --- State ---
     let projects = [];
@@ -93,6 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
         objectivesSection.style.display = 'none';
         chatSection.style.display = 'none';
         if (assetsSection) assetsSection.style.display = 'none'; // Hide assets section
+        if (projectContextModal) projectContextModal.style.display = 'none'; // Hide context modal
         selectedProjectId = null;
         selectedObjectiveId = null;
         objectives = [];
@@ -366,13 +374,170 @@ document.addEventListener('DOMContentLoaded', () => {
                 const errorData = await response.json().catch(() => ({ error: 'Failed to create project' }));
                 throw new Error(errorData.error || `Server error: ${response.status}`);
             }
-            fetchProjects();
+            const newProject = await response.json(); // Assuming server returns the created project
+            await fetchProjects(); // Refresh the list which also updates the `projects` array
             projectNameInput.value = '';
             projectDescriptionInput.value = '';
+
+            // Start project context workflow
+            if (newProject && newProject.id) {
+                startProjectContextWorkflow(newProject.id);
+            } else {
+                // Fallback: try to find it in the refreshed list if server didn't return it directly
+                // This is less reliable, assumes name is unique and was just added
+                const foundProject = projects.find(p => p.name === name && p.description === description);
+                if (foundProject) {
+                    startProjectContextWorkflow(foundProject.id);
+                } else {
+                    console.warn('Could not determine new project ID to start context workflow.');
+                }
+            }
+
         } catch (error) {
             displayError(error.message, createProjectForm);
         }
     }
+
+    // --- Project Context Workflow Functions ---
+    async function startProjectContextWorkflow(projectId) {
+        if (!projectContextModal || !contextQuestionsContainer || !submitContextAnswersBtn) {
+            console.error('Project context modal elements not found.');
+            return;
+        }
+
+        clearContainer(contextQuestionsContainer);
+        contextQuestionsContainer.innerHTML = '<p>Loading context questions...</p>';
+        projectContextModal.style.display = 'block';
+        submitContextAnswersBtn.style.display = 'none'; // Hide until questions are loaded
+
+        try {
+            const response = await fetch(`/api/projects/${projectId}/context-questions`, { method: 'POST' });
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({error: `Failed to fetch context questions: ${response.statusText}`}));
+                throw new Error(errData.error);
+            }
+            const questions = await response.json();
+
+            clearContainer(contextQuestionsContainer);
+            if (!questions || questions.length === 0) {
+                contextQuestionsContainer.innerHTML = '<p>No context questions were generated for this project. You can close this window.</p>';
+                // Optionally hide submit button if no questions, or allow submitting empty answers?
+                // For now, let's assume if no questions, workflow ends.
+                submitContextAnswersBtn.style.display = 'none';
+                return;
+            }
+
+            questions.forEach((question, index) => {
+                const questionDiv = document.createElement('div');
+                questionDiv.classList.add('context-question-item');
+
+                const label = document.createElement('label');
+                label.setAttribute('for', `context-answer-${index}`);
+                label.textContent = question;
+
+                const textarea = document.createElement('textarea');
+                textarea.id = `context-answer-${index}`;
+                textarea.name = `context-answer-${index}`;
+                textarea.rows = 3;
+                textarea.setAttribute('data-question', question); // Store the question itself
+
+                questionDiv.appendChild(label);
+                questionDiv.appendChild(textarea);
+                if (contextAnswersForm) { // If form element is used
+                    contextAnswersForm.appendChild(questionDiv);
+                } else { // Fallback to container if no form
+                    contextQuestionsContainer.appendChild(questionDiv);
+                }
+            });
+
+            submitContextAnswersBtn.style.display = 'block';
+            submitContextAnswersBtn.disabled = false;
+            // Remove previous listener before adding a new one to avoid multiple submissions
+            const newSubmitBtn = submitContextAnswersBtn.cloneNode(true);
+            submitContextAnswersBtn.parentNode.replaceChild(newSubmitBtn, submitContextAnswersBtn);
+            // Re-assign the variable to the new button to ensure it's the one being used
+            window.submitContextAnswersBtn = document.getElementById('submit-context-answers-btn'); // Assuming it has this ID
+
+            window.submitContextAnswersBtn.addEventListener('click', function handler(event) {
+                 // `this` refers to the button, use window.submitContextAnswersBtn to be safe if needed
+                handleSubmitContextAnswers(projectId);
+                // It's important to remove the event listener or ensure it's only added once.
+                // Cloning and replacing the button (as done above) is a common way to clear listeners.
+                // Alternatively, use `this.removeEventListener('click', handler);` if you are sure about the context.
+            });
+
+
+        } catch (error) {
+            displayError(`Error starting project context workflow: ${error.message}`, contextQuestionsContainer);
+            submitContextAnswersBtn.style.display = 'none';
+        }
+    }
+
+    async function handleSubmitContextAnswers(projectId) {
+        if (!projectContextModal || !contextQuestionsContainer || !window.submitContextAnswersBtn) {
+            console.error('Project context modal elements not found for submitting answers.');
+            return;
+        }
+
+        window.submitContextAnswersBtn.disabled = true;
+        addMessageToUI('user', 'Submitting project context answers...', contextQuestionsContainer); // Temporary message in modal
+
+        let collectedAnswers = "";
+        const textareas = (contextAnswersForm || contextQuestionsContainer).querySelectorAll('textarea');
+        textareas.forEach(textarea => {
+            const question = textarea.getAttribute('data-question');
+            const answer = textarea.value.trim();
+            if (answer) { // Only include answered questions
+                collectedAnswers += `Q: ${question}\nA: ${answer}\n\n`;
+            }
+        });
+
+        if (!collectedAnswers.trim()) {
+            displayError('Please provide answers to at least one question.', contextQuestionsContainer);
+            window.submitContextAnswersBtn.disabled = false;
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/projects/${projectId}/context-answers`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userAnswersString: collectedAnswers.trim() }),
+            });
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({error: `Failed to submit context answers: ${response.statusText}`}));
+                throw new Error(errData.error);
+            }
+            const result = await response.json();
+
+            projectContextModal.style.display = 'none';
+            // Display a success notification on the main page
+            const notificationDiv = document.createElement('div');
+            notificationDiv.id = 'user-notification';
+            notificationDiv.textContent = result.message || 'Project context updated successfully!';
+            notificationDiv.className = 'notification-success';
+            document.body.insertBefore(notificationDiv, document.body.firstChild);
+            setTimeout(() => {
+                notificationDiv.style.opacity = '0';
+                setTimeout(() => notificationDiv.remove(), 500);
+            }, 3000);
+
+            // Optionally, update the project in the local `projects` array
+            const projectIndex = projects.findIndex(p => p.id === projectId);
+            if (projectIndex !== -1 && result.projectContextAnswers) {
+                projects[projectIndex].projectContextAnswers = result.projectContextAnswers;
+                // If you have a function that renders project details, call it here
+                // renderProjects(); // Might be too broad, consider updating just the specific project display if detailed view exists
+            }
+            fetchProjects(); // Re-fetch projects to update list with any new indicators
+
+        } catch (error) {
+            displayError(`Error submitting context answers: ${error.message}`, contextQuestionsContainer);
+            window.submitContextAnswersBtn.disabled = false;
+        }
+    }
+
 
     // --- Objective Functions ---
     async function fetchObjectives(projectId) {
@@ -645,8 +810,24 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Initial Load ---
+    if (projectContextModal) projectContextModal.style.display = 'none'; // Ensure modal is hidden initially
     showProjectsSection();
     fetchProjects();
+
+    // Event listener for closing the context modal (if a close button exists)
+    if (closeContextModalBtn) {
+        closeContextModalBtn.addEventListener('click', () => {
+            if (projectContextModal) projectContextModal.style.display = 'none';
+        });
+    }
+
+    // Also hide modal if user clicks outside of it (optional)
+    window.addEventListener('click', (event) => {
+        if (event.target === projectContextModal) {
+            projectContextModal.style.display = 'none';
+        }
+    });
+
 
     // --- UI Notifications from URL parameters ---
     const params = new URLSearchParams(window.location.search);
