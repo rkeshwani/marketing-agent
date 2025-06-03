@@ -3,6 +3,10 @@ const path = require('path'); // Import the 'path' module
 const axios = require('axios'); // For making HTTP requests
 const session = require('express-session'); // For session management
 const crypto = require('crypto'); // For generating 'state' string
+const { google } = require('googleapis'); // Added for Google Drive
+const multer = require('multer'); // Added for file uploads
+const stream = require('stream'); // Added for Google Drive file upload
+const vectorService = require('./services/vectorService'); // Added for embeddings
 const { getAgentResponse, initializeAgent } = require('./agent'); // Modified to import initializeAgent
 const Project = require('./models/Project');
 const Objective = require('./models/Objective');
@@ -15,7 +19,20 @@ const FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID || 'YOUR_FACEBOOK_APP_ID';
 const FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET || 'YOUR_FACEBOOK_APP_SECRET';
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY || 'YOUR_TIKTOK_CLIENT_KEY';
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET || 'YOUR_TIKTOK_CLIENT_SECRET';
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID'; // Added
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || 'YOUR_GOOGLE_CLIENT_SECRET'; // Added
+const GOOGLE_REDIRECT_URI = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/auth/google/callback` : `http://localhost:${port}/auth/google/callback`; // Added
 const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${port}`;
+
+// --- Google OAuth2 Client ---
+const oauth2Client = new google.auth.OAuth2(
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    GOOGLE_REDIRECT_URI
+);
+
+// --- Multer Configuration (for file uploads) ---
+const upload = multer({ storage: multer.memoryStorage() }); // Using memory storage for now
 
 // Middleware to parse JSON bodies
 app.use(express.json());
@@ -118,6 +135,69 @@ app.get('/auth/facebook/callback', async (req, res) => {
         console.error('Facebook auth callback processing error:', errorMessage, error.response ? error.response.data : '');
         delete req.session[state];
         res.redirect(`/?message=Error+connecting+Facebook:+${encodeURIComponent(errorMessage)}&status=error`);
+    }
+});
+
+// DELETE /api/projects/:projectId/assets/:assetId - Delete an asset from a project
+app.delete('/api/projects/:projectId/assets/:assetId', async (req, res) => {
+    const { projectId, assetId } = req.params;
+
+    try {
+        const project = dataStore.findProjectById(projectId);
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found.' });
+        }
+
+        const assetIndex = project.assets ? project.assets.findIndex(a => a.assetId === assetId) : -1;
+        if (assetIndex === -1) {
+            return res.status(404).json({ error: 'Asset not found in project.' });
+        }
+
+        const assetToDelete = project.assets[assetIndex];
+        const googleDriveFileId = assetToDelete.googleDriveFileId;
+
+        // Attempt to delete from Google Drive if configured
+        if (googleDriveFileId && project.googleDriveAccessToken) {
+            const driveClient = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
+            driveClient.setCredentials({
+                access_token: project.googleDriveAccessToken,
+                refresh_token: project.googleDriveRefreshToken,
+            });
+            const drive = google.drive({ version: 'v3', auth: driveClient });
+
+            try {
+                console.log(`Attempting to delete asset ${assetId} (Drive ID: ${googleDriveFileId}) from Google Drive.`);
+                await drive.files.delete({ fileId: googleDriveFileId });
+                console.log(`Successfully deleted asset ${assetId} from Google Drive.`);
+            } catch (driveError) {
+                // Log GDrive deletion error but proceed to remove from app's datastore
+                console.error(`Failed to delete asset ${assetId} (Drive ID: ${googleDriveFileId}) from Google Drive:`,
+                    driveError.response ? driveError.response.data : driveError.message);
+                // If it's a critical auth error, maybe we should stop? For now, we'll log and proceed.
+                // e.g. if (driveError.code === 401) return res.status(500).json({ error: 'Google Drive auth error during deletion.'});
+                if (driveError.response && driveError.response.status === 404) {
+                    console.warn(`Asset ${assetId} (Drive ID: ${googleDriveFileId}) not found on Google Drive. Proceeding with local deletion.`);
+                } else {
+                    // For other errors, we might still want to proceed with local deletion.
+                    // Depending on policy, could return an error here.
+                }
+            }
+        } else if (googleDriveFileId) {
+            console.warn(`Asset ${assetId} has a Google Drive File ID but project is missing GDrive token. Cannot delete from Drive.`);
+        }
+
+        // Remove from Vector Store
+        vectorService.removeAssetVector(projectId, assetId);
+
+        // Remove from Project Assets Array in DataStore
+        const updatedAssets = project.assets.filter(a => a.assetId !== assetId);
+        dataStore.updateProjectById(projectId, { assets: updatedAssets });
+
+        res.status(200).json({ message: 'Asset deleted successfully.' });
+
+    } catch (error) {
+        console.error(`Error deleting asset ${assetId} for project ${projectId}:`, error);
+        res.status(500).json({ error: 'Failed to delete asset due to a server error.' });
     }
 });
 
@@ -306,6 +386,145 @@ app.get('/auth/tiktok/callback', async (req, res) => {
     }
 });
 
+// --- Google Drive Auth ---
+// Step 1: Initiate Google Drive authentication
+app.get('/auth/google/initiate', (req, res) => {
+    const { projectId } = req.query;
+    if (!projectId) {
+        return res.status(400).send('Project ID is required');
+    }
+    // Store projectId in session to use it in the callback
+    req.session.gDriveProjectId = projectId;
+
+    const scopes = [
+        'https://www.googleapis.com/auth/drive.file', // Full access to files created by an app
+        'https://www.googleapis.com/auth/userinfo.profile' // Basic profile info
+    ];
+
+    const authUrl = oauth2Client.generateAuthUrl({
+        access_type: 'offline', // Request a refresh token
+        scope: scopes,
+        // A unique state value should be used to prevent CSRF attacks, similar to Facebook/TikTok
+        // For simplicity in this example, it's omitted but recommended for production
+    });
+    res.redirect(authUrl);
+});
+
+// Step 2: Google Drive callback with authorization code
+app.get('/auth/google/callback', async (req, res) => {
+    const { code, error } = req.query;
+    const projectId = req.session.gDriveProjectId;
+
+    if (error) {
+        console.error('Google Auth callback error:', error);
+        delete req.session.gDriveProjectId; // Clean up session
+        return res.redirect(`/?message=Error+connecting+Google+Drive:+${encodeURIComponent(error)}&status=error`);
+    }
+
+    if (!code) {
+        delete req.session.gDriveProjectId; // Clean up session
+        return res.redirect('/?message=Error+connecting+Google+Drive:+Authorization+code+missing&status=error');
+    }
+
+    if (!projectId) {
+        // This case might happen if the session expired or was lost.
+        console.error('Google Auth callback: Project ID missing from session.');
+        return res.redirect('/?message=Error+connecting+Google+Drive:+Project+ID+missing+from+session.+Please+try+again.&status=error');
+    }
+
+    try {
+        // 1. Token Exchange
+        const { tokens } = await oauth2Client.getToken(code);
+        oauth2Client.setCredentials(tokens);
+
+        // 2. Get Project Details
+        const project = dataStore.findProjectById(projectId);
+        if (!project) {
+            console.error(`Google Auth Callback: Project not found with ID: ${projectId}`);
+            delete req.session.gDriveProjectId;
+            return res.redirect(`/?message=Error+Google+Drive+setup:+Project+not+found&status=error`);
+        }
+
+        // 3. Create Google Drive Service Client
+        const drive = google.drive({ version: 'v3', auth: oauth2Client });
+        const parentFolderName = "marketing-agent";
+        let parentFolderId;
+
+        // 4. Check/Create "marketing-agent" Parent Folder
+        const folderQuery = `name='${parentFolderName}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false`;
+        const { data: { files: existingFolders } } = await drive.files.list({ q: folderQuery, fields: 'files(id, name)' });
+
+        if (existingFolders && existingFolders.length > 0) {
+            parentFolderId = existingFolders[0].id;
+        } else {
+            const fileMetadata = {
+                name: parentFolderName,
+                mimeType: 'application/vnd.google-apps.folder',
+            };
+            const { data: newFolder } = await drive.files.create({
+                resource: fileMetadata,
+                fields: 'id',
+            });
+            parentFolderId = newFolder.id;
+        }
+
+        if (!parentFolderId) {
+            console.error(`Google Auth Callback: Failed to find or create parent folder '${parentFolderName}' for project ${projectId}`);
+            delete req.session.gDriveProjectId;
+            return res.redirect(`/?message=Error+Google+Drive+setup:+Could+not+establish+parent+folder&status=error&projectId=${projectId}`);
+        }
+
+        // 5. Create Project-Specific Folder
+        const projectFolderName = project.name; // Use project's name for the folder
+        const projectFolderMetadata = {
+            name: projectFolderName,
+            mimeType: 'application/vnd.google-apps.folder',
+            parents: [parentFolderId],
+        };
+        const { data: newProjectFolder } = await drive.files.create({
+            resource: projectFolderMetadata,
+            fields: 'id',
+        });
+        const googleDriveFolderId = newProjectFolder.id;
+
+        if (!googleDriveFolderId) {
+            console.error(`Google Auth Callback: Failed to create project-specific folder for project ${projectId}`);
+            delete req.session.gDriveProjectId;
+            return res.redirect(`/?message=Error+Google+Drive+setup:+Could+not+create+project+folder&status=error&projectId=${projectId}`);
+        }
+
+        // 6. Update Project in DataStore
+        const updateData = {
+            googleDriveFolderId: googleDriveFolderId,
+            googleDriveAccessToken: tokens.access_token,
+        };
+        if (tokens.refresh_token) {
+            updateData.googleDriveRefreshToken = tokens.refresh_token;
+        }
+        const updatedProject = dataStore.updateProjectById(projectId, updateData);
+
+        if (!updatedProject) {
+            // This is unlikely if findProjectById succeeded, but good to check
+            console.error(`Google Auth Callback: Failed to update project ${projectId} in DataStore after GDrive setup.`);
+            // Note: At this point, folders are created on GDrive. Manual cleanup might be needed or a rollback mechanism.
+            delete req.session.gDriveProjectId;
+            return res.redirect(`/?message=Error+Google+Drive+setup:+Failed+to+save+Drive+details+to+project&status=error&projectId=${projectId}`);
+        }
+
+        // 7. Redirect
+        delete req.session.gDriveProjectId; // Clean up session
+        res.redirect(`/project-details.html?projectId=${projectId}&gdriveStatus=success`); // Redirect to project details or a settings page
+
+    } catch (err) {
+        console.error(`Google Auth Callback Error for projectId ${projectId}:`, err.response ? err.response.data : err.message, err.stack);
+        delete req.session.gDriveProjectId; // Clean up session
+        const errorMessage = err.response && err.response.data && err.response.data.error_description
+            ? err.response.data.error_description
+            : (err.response && err.response.data && err.response.data.error ? err.response.data.error : 'Failed to process Google authentication.');
+        return res.redirect(`/?message=Error+Google+Drive+setup:+${encodeURIComponent(errorMessage)}&status=error&projectId=${projectId}`);
+    }
+});
+
 // --- Facebook Page Selection & Project Finalization API ---
 
 // GET /api/facebook/pages - Retrieve pages stored in session after Facebook auth
@@ -458,6 +677,114 @@ app.delete('/api/projects/:projectId', (req, res) => {
         res.status(500).json({ error: 'Failed to delete project' });
     }
 });
+
+// --- Project Assets API Endpoints ---
+
+// GET /api/projects/:projectId/assets - List all assets for a project
+app.get('/api/projects/:projectId/assets', (req, res) => {
+    const { projectId } = req.params;
+    try {
+        const project = dataStore.findProjectById(projectId);
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found.' });
+        }
+        const assets = project.assets || [];
+        res.status(200).json(assets);
+    } catch (error) {
+        console.error(`Error listing assets for project ${projectId}:`, error);
+        res.status(500).json({ error: 'Failed to list project assets due to a server error.' });
+    }
+});
+
+// POST /api/projects/:projectId/assets/upload - Upload a new asset for a project
+app.post('/api/projects/:projectId/assets/upload', upload.single('assetFile'), async (req, res) => {
+    const { projectId } = req.params;
+
+    if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded. Please select a file.' });
+    }
+
+    try {
+        const project = dataStore.findProjectById(projectId);
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found.' });
+        }
+
+        if (!project.googleDriveFolderId || !project.googleDriveAccessToken) {
+            return res.status(400).json({ error: 'Google Drive is not configured for this project. Please connect Google Drive first.' });
+        }
+
+        // 1. Initialize OAuth2Client for Drive API
+        // Note: The global oauth2Client is for the initial auth flow.
+        // For API calls, we might need to re-initialize or ensure it's correctly set up
+        // with the project's specific tokens, especially if handling multiple users/projects.
+        // For simplicity, re-creating and setting credentials here for clarity.
+        const client = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
+        client.setCredentials({
+            access_token: project.googleDriveAccessToken,
+            refresh_token: project.googleDriveRefreshToken, // May be null if not obtained/stored
+        });
+        const drive = google.drive({ version: 'v3', auth: client });
+
+        // 2. Prepare File Metadata
+        const fileMetadata = {
+            name: req.file.originalname,
+            parents: [project.googleDriveFolderId],
+        };
+
+        // 3. Prepare Media
+        const media = {
+            mimeType: req.file.mimetype,
+            body: stream.Readable.from(req.file.buffer),
+        };
+
+        // 4. Upload to Google Drive
+        const uploadedFile = await drive.files.create({
+            resource: fileMetadata,
+            media: media,
+            fields: 'id, name, mimeType', // Fields to retrieve about the uploaded file
+        });
+
+        // 5. Generate Asset ID
+        const assetId = `asset_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+        // Call vectorization service
+        const assetNameForEmbedding = uploadedFile.data.name;
+        const { vector, tags } = await vectorService.generateEmbedding(assetNameForEmbedding);
+
+        // 6. Create Asset Object
+        const newAsset = {
+            assetId,
+            name: uploadedFile.data.name,
+            type: uploadedFile.data.mimeType,
+            googleDriveFileId: uploadedFile.data.id,
+            vector: vector, // Store the generated vector
+            tags: tags,     // Store the generated tags
+        };
+
+        // 7. Update Project's Assets Array
+        const updatedAssets = [...(project.assets || []), newAsset]; // Ensure project.assets is an array
+        dataStore.updateProjectById(projectId, { assets: updatedAssets });
+
+        // Add asset vector to in-memory store
+        vectorService.addAssetVector(projectId, newAsset.assetId, newAsset.vector);
+
+        // 8. Respond
+        res.status(201).json(newAsset);
+
+    } catch (error) {
+        console.error(`Error processing file upload for project ${projectId}:`, error.response ? error.response.data : error.message, error.stack);
+        if (error.response && error.response.data && error.response.data.error) {
+            const gError = error.response.data.error;
+            if (gError.code === 401 || (gError.errors && gError.errors.some(e => e.reason === 'authError'))) {
+                 return res.status(401).json({ error: 'Google Drive authentication error. Please reconnect Google Drive.', details: gError.message });
+            }
+            return res.status(500).json({ error: `Google Drive API error: ${gError.message}`, details: gError.errors });
+        }
+        res.status(500).json({ error: 'Failed to upload file to Google Drive due to a server error.' });
+    }
+});
+
 
 // === OBJECTIVE API ENDPOINTS ===
 

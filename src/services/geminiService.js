@@ -8,17 +8,16 @@
  *
  * @param {string} userInput The user's latest message.
  * @param {Array<Object>} chatHistory The entire chat history (might be used for context).
+ * @param {Array<Object>} projectAssets Assets associated with the project (optional).
  * @returns {Promise<string>} A promise that resolves to the simulated API response.
  */
-async function fetchGeminiResponse(userInput, chatHistory) {
-  console.log('GeminiService: Received input for API call -', userInput);
+async function fetchGeminiResponse(userInput, chatHistory, projectAssets = []) {
+  console.log('GeminiService (fetchGeminiResponse): Received input for API call -', userInput);
   // console.log('GeminiService: Current chat history for context:', chatHistory); // For debugging
+  console.log('GeminiService (fetchGeminiResponse): Received project assets:', projectAssets.length > 0 ? projectAssets.map(a => a.name) : 'No assets');
 
   // Simulate an API call delay
   await new Promise(resolve => setTimeout(resolve, 500));
-
-  // Placeholder response
-  const simulatedResponse = `Gemini API (placeholder) processed: "${userInput}"`;
 
   // TODO: Implement actual API call using axios
   // For the purpose of generatePlanForObjective, we will temporarily make this function return
@@ -60,13 +59,17 @@ QUESTIONS:
   return simulatedResponse;
 }
 
-async function generatePlanForObjective(objective) {
+async function generatePlanForObjective(objective, projectAssets = []) {
   console.log('GeminiService (generatePlanForObjective): Received objective -', objective.title);
+  console.log('GeminiService (generatePlanForObjective): Received project assets:', projectAssets.length > 0 ? projectAssets.map(a => a.name) : 'No assets');
 
   const prompt = `
 Based on the following marketing objective:
 Title: "${objective.title}"
 Brief: "${objective.brief}"
+
+AVAILABLE_ASSETS:
+${projectAssets.length > 0 ? projectAssets.map(asset => `- ${asset.name} (Type: ${asset.type}, Tags: ${asset.tags.join(', ')})`).join('\n') : 'No assets available.'}
 
 Please generate a strategic plan to achieve this objective. The plan should consist of clear, actionable steps.
 For each step, consider if it requires:
@@ -90,7 +93,7 @@ If you have no questions, write "QUESTIONS: None".
 
   // Call the existing fetchGeminiResponse with the detailed prompt
   // For this subtask, fetchGeminiResponse is modified to return a structured string for parsing.
-  const geminiResponseString = await fetchGeminiResponse(prompt, []);
+  const geminiResponseString = await fetchGeminiResponse(prompt, [], projectAssets); // Pass projectAssets
   console.log('GeminiService (generatePlanForObjective): Received raw response for parsing:\n', geminiResponseString);
 
 

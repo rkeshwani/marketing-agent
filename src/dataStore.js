@@ -18,6 +18,12 @@ function addProject(projectData) {
     newProject.tiktokUserID = projectData.tiktokUserID || null;
     newProject.tiktokPermissions = projectData.tiktokPermissions || [];
 
+    // Assign Google Drive and asset-related fields
+    newProject.googleDriveFolderId = projectData.googleDriveFolderId || null;
+    newProject.googleDriveAccessToken = projectData.googleDriveAccessToken || null;
+    newProject.googleDriveRefreshToken = projectData.googleDriveRefreshToken || null;
+    newProject.assets = projectData.assets || [];
+
     projects.push(newProject);
     return newProject;
 }
@@ -48,6 +54,12 @@ function updateProjectById(projectId, updateData) {
         if (updateData.tiktokAccessToken !== undefined) project.tiktokAccessToken = updateData.tiktokAccessToken;
         if (updateData.tiktokUserID !== undefined) project.tiktokUserID = updateData.tiktokUserID;
         if (updateData.tiktokPermissions !== undefined) project.tiktokPermissions = updateData.tiktokPermissions;
+
+        // Update Google Drive and asset-related fields if provided
+        if (updateData.googleDriveFolderId !== undefined) project.googleDriveFolderId = updateData.googleDriveFolderId;
+        if (updateData.googleDriveAccessToken !== undefined) project.googleDriveAccessToken = updateData.googleDriveAccessToken;
+        if (updateData.googleDriveRefreshToken !== undefined) project.googleDriveRefreshToken = updateData.googleDriveRefreshToken;
+        if (updateData.assets !== undefined) project.assets = updateData.assets;
 
         project.updatedAt = new Date();
         return project;
