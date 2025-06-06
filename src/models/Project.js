@@ -34,6 +34,11 @@ class Project {
         this.googleDriveRefreshToken = null;
         this.assets = []; // This will be an array of asset objects
 
+        // Google Search Console fields
+        this.googleSearchConsoleAccessToken = null;
+        this.googleSearchConsoleRefreshToken = null;
+        this.googleSearchConsoleScopes = [];
+
         // Project context fields
         this.projectContextQuestions = [];
         this.projectContextAnswers = {};

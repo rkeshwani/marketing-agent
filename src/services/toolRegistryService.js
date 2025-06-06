@@ -230,6 +230,27 @@ const toolSchemas = [
       },
       required: ["content"]
     }
+  },
+  {
+    name: "google_search_console_check_anomalies",
+    description: "Checks Google Search Console for indexing anomalies for a specified site URL. Requires prior Google Account authentication via the /auth/google-search-console/initiate?projectId=<YOUR_PROJECT_ID> endpoint.",
+    parameters: {
+      type: "object",
+      properties: {
+        siteUrl: {
+          type: "string",
+          description: "The full URL of the website property as verified in Google Search Console (e.g., 'sc-domain:example.com' or 'https://www.example.com/')."
+        },
+        anomalyTypes: {
+          type: "array",
+          description: "Optional. Specific types of anomalies to check for (e.g., ['sitemapErrors', 'crawlErrors', 'indexingDrops']). Defaults to a comprehensive check if not provided.",
+          items: {
+            type: "string"
+          }
+        }
+      },
+      required: ["siteUrl"]
+    }
   }
 ];
 

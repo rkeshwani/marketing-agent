@@ -11,6 +11,8 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 const linkedinService = require('./linkedinService'); // Added for LinkedIn
+const googleAuthService = require('../services/googleAuthService'); // Added for Search Console
+const { google } = require('googleapis'); // Added for Search Console
 
 
 // Note: The following functions rely on global.dataStore being available,
@@ -384,7 +386,8 @@ module.exports = {
     execute_google_ads_create_campaign_from_config,
     execute_google_ads_create_ad_group_from_config,
     execute_google_ads_create_ad_from_config,
-    execute_post_to_linkedin // Added LinkedIn post execution
+    execute_post_to_linkedin, // Added LinkedIn post execution
+    execute_google_search_console_check_anomalies // Added Search Console check anomalies
 };
 
 // --- LinkedIn Tool Function ---
@@ -408,6 +411,96 @@ async function execute_post_to_linkedin(params, projectId) {
         console.error(`Error in execute_post_to_linkedin for project ${projectId}:`, error.message);
         return JSON.stringify({ error: `Failed to post to LinkedIn: ${error.message}` });
     }
+}
+
+// --- Google Search Console Tool Function ---
+async function execute_google_search_console_check_anomalies(params, projectId) {
+    console.log(`Executing google_search_console_check_anomalies for project ${projectId}`, params);
+
+    if (!params || !params.siteUrl) {
+        return JSON.stringify({ error: "siteUrl is a required parameter." });
+    }
+
+    const accessToken = await googleAuthService.getValidAccessToken(projectId);
+    if (!accessToken) {
+        return JSON.stringify({ "error": `Google Search Console not authenticated for project ${projectId}. Please visit /auth/google-search-console/initiate?projectId=${projectId} to authenticate.` });
+    }
+
+    // Ensure the OAuth2 client used by googleapis has the token
+    // googleAuthService.oauth2Client is the shared instance.
+    googleAuthService.oauth2Client.setCredentials({ access_token: accessToken });
+
+    // Alternatively, if you want to apply auth globally for all googleapis calls (less common for per-request):
+    // google.options({ auth: googleAuthService.oauth2Client });
+
+    const searchconsole = google.searchconsole('v1');
+
+    console.log(`Simulating Search Console API call: Verifying site ${params.siteUrl}`);
+    // In a real scenario, you might call:
+    // await searchconsole.sites.get({ siteUrl: params.siteUrl });
+    // And handle errors if the site isn't verified or accessible.
+
+    console.log(`Simulating Search Console API call: Fetching sitemaps for ${params.siteUrl}`);
+    const mockSitemaps = [{ path: `${params.siteUrl}sitemap.xml`, status: 'Success', lastSubmitted: new Date().toISOString(), errors: 0, warnings: 0 }];
+    // Real call example:
+    // try {
+    //   const sitemapResponse = await searchconsole.sitemaps.list({ siteUrl: params.siteUrl });
+    //   mockSitemaps = sitemapResponse.data.sitemap || [];
+    // } catch (e) { console.error("Error fetching sitemaps:", e.message); mockSitemaps = [{ path: 'Error fetching sitemaps', status: 'Error', errors: 1, warnings: 0 }]; }
+
+
+    console.log(`Simulating Search Console API call: Fetching crawl errors for ${params.siteUrl}`);
+    const mockCrawlErrors = { count: 5, type: 'Server Error (5xx)' }; // Example
+    // Real call example (hypothetical, API structure varies):
+    // try {
+    //   const crawlErrorsResponse = await searchconsole.urlInspection.index.inspect({ inspectionUrl: params.siteUrl, languageCode: 'en-US' }); // This is for URL inspection, crawl errors are usually aggregated differently
+    //   // Or, you might look into specific reports if the API provides them.
+    //   // For this mock, we'll keep it simple.
+    // } catch (e) { console.error("Error fetching crawl errors:", e.message); mockCrawlErrors = { count: 1, type: 'API Error' }; }
+
+
+    console.log(`Simulating Search Console API call: Fetching indexing status for ${params.siteUrl}`);
+    const mockIndexingStatus = { indexedPageCount: 1000, trend: 'stable' };
+    // Real call example (hypothetical, API structure varies):
+    // This data often comes from analytics or specific indexing reports. Search Console API for this is less direct.
+
+
+    let anomaliesFound = [];
+    const anomalyTypes = params.anomalyTypes || []; // Default to empty array if not provided
+
+    // Check for sitemap errors
+    if (anomalyTypes.length === 0 || anomalyTypes.includes('sitemapErrors')) {
+        if (mockSitemaps.some(sitemap => sitemap.errors > 0)) {
+            anomaliesFound.push({
+                type: 'Sitemap Error',
+                details: mockSitemaps.filter(sitemap => sitemap.errors > 0)
+            });
+        }
+    }
+
+    // Check for crawl errors
+    if (anomalyTypes.length === 0 || anomalyTypes.includes('crawlErrors')) {
+        if (mockCrawlErrors.count > 0) {
+            anomaliesFound.push({ type: 'Crawl Error', details: mockCrawlErrors });
+        }
+    }
+
+    // Check for indexing drops (example)
+    if (anomalyTypes.length === 0 || anomalyTypes.includes('indexingDrops')) {
+        if (mockIndexingStatus.trend === 'significant_drop') { // This mock is 'stable', so no anomaly here
+            anomaliesFound.push({ type: 'Indexing Drop', details: mockIndexingStatus });
+        }
+    }
+
+    return JSON.stringify({
+        siteUrl: params.siteUrl,
+        lastChecked: new Date().toISOString(),
+        anomalies: anomaliesFound,
+        sitemapStatus: mockSitemaps,
+        crawlErrors: mockCrawlErrors,
+        indexingStatus: mockIndexingStatus,
+        message: anomaliesFound.length > 0 ? `Anomalies detected for ${params.siteUrl}.` : `No major anomalies detected for ${params.siteUrl}.`
+    });
 }
 
 [end of src/services/toolExecutorService.js]

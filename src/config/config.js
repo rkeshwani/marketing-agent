@@ -39,6 +39,12 @@ const config = {
   LINKEDIN_APP_ID: process.env.LINKEDIN_APP_ID || '',
   LINKEDIN_APP_SECRET: process.env.LINKEDIN_APP_SECRET || '',
 
+  // Google Search Console API Configuration
+  GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com',
+  GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET || 'YOUR_GOOGLE_CLIENT_SECRET',
+  GOOGLE_OAUTH_REDIRECT_URI: process.env.GOOGLE_OAUTH_REDIRECT_URI || 'http://localhost:3000/auth/google/callback',
+  GOOGLE_SEARCH_CONSOLE_SCOPES: ['https://www.googleapis.com/auth/webmasters.readonly'],
+
   // Add other configurations as needed
 };
 

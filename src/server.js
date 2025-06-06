@@ -13,6 +13,7 @@ const Project = require('./models/Project');
 const Objective = require('./models/Objective');
 const dataStore = require('./dataStore');
 const SchedulerService = require('./services/schedulerService'); // Added: Import SchedulerService
+const googleAuthService = require('./services/googleAuthService'); // Added for Google Search Console Auth
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -1167,6 +1168,51 @@ app.post('/api/chat', async (req, res) => {
 // This is important for single-page applications (SPAs) and PWA navigation.
 app.get(/^\/(?!api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+});
+
+// --- Google Search Console Auth Routes ---
+// Initiate Google Search Console OAuth flow
+app.get('/auth/google-search-console/initiate', (req, res) => {
+    const { projectId } = req.query;
+    if (!projectId) {
+        return res.status(400).send('Project ID is required for Google Search Console authentication.');
+    }
+    try {
+        const authUrl = googleAuthService.generateAuthUrl(projectId);
+        res.redirect(authUrl);
+    } catch (error) {
+        console.error('Error initiating Google Search Console auth:', error);
+        res.status(500).send('Failed to initiate Google Search Console authentication.');
+    }
+});
+
+// Callback for Google Search Console OAuth flow
+app.get('/auth/google-search-console/callback', async (req, res) => {
+    const { code, state, error } = req.query;
+
+    if (error) {
+        console.error('Google Search Console Auth callback error:', error);
+        return res.status(500).send(`Authentication failed: ${error}`);
+    }
+    if (!code || !state) {
+        console.error('Google Search Console Auth callback: Missing code or state.');
+        return res.status(400).send('Authentication callback is missing required parameters (code or state).');
+    }
+
+    try {
+        const success = await googleAuthService.handleOAuthCallback(code, state);
+        if (success) {
+            // Redirect to a project-specific page or a generic success page
+            // For now, sending a simple message.
+            // Ideally, redirect to a page like /project-settings.html?projectId=${state}&gscStatus=success
+            res.send('Google Search Console authentication successful! You can close this tab.');
+        } else {
+            res.status(500).send('Google Search Console authentication failed. Could not process tokens or find project.');
+        }
+    } catch (err) {
+        console.error('Error handling Google Search Console OAuth callback:', err);
+        res.status(500).send('Server error during Google Search Console authentication callback.');
+    }
 });
 
 app.listen(port, () => {

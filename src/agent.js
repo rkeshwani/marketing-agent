@@ -140,6 +140,8 @@ async function executeTool(toolName, toolArguments, projectId) {
             }
             return await toolExecutorService.execute_google_ads_create_ad_from_config(parsedAdConfig, projectId);
         }
+        case 'google_search_console_check_anomalies':
+            return await toolExecutorService.execute_google_search_console_check_anomalies(toolArguments, projectId);
         default:
             console.error(`Agent: Unknown tool name in executeTool dispatcher: ${toolName}`);
             return JSON.stringify({ error: `Tool '${toolName}' is not recognized by the executeTool dispatcher.` });
