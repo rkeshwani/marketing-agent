@@ -3,7 +3,7 @@
 const fetch = require('node-fetch');
 const config = require('../config/config'); // Path relative to src/services/
 const vectorService = require('./vectorService'); // In the same services folder
-const e2bService = require('./e2bService'); // For executing Python scripts
+const microsandboxService = require('./microsandboxService'); // For executing Python scripts
 const geminiService = require('./geminiService'); // For generating Python script
 const fs = require('fs/promises');
 const fsSync = require('fs'); // For createWriteStream and existsSync
