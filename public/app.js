@@ -13,22 +13,23 @@ document.addEventListener('DOMContentLoaded', () => {
     const createProjectForm = document.getElementById('create-project-form');
     const projectNameInput = document.getElementById('project-name');
     const projectDescriptionInput = document.getElementById('project-description');
-    const selectedProjectNameElement = document.getElementById('selected-project-name');
+    // const selectedProjectNameElement = document.getElementById('selected-project-name'); // No longer used directly
     // New buttons for social media connection
     const connectFacebookBtn = document.getElementById('connect-facebook-btn');
     const connectTiktokBtn = document.getElementById('connect-tiktok-btn');
-    const connectLinkedinBtn = document.getElementById('connect-linkedin-btn'); // Added LinkedIn button
+    const connectLinkedinBtn = document.getElementById('connect-linkedin-btn');
 
-    const objectiveListContainer = document.getElementById('objective-list-container');
-    const createObjectiveForm = document.getElementById('create-objective-form');
-    const objectiveTitleInput = document.getElementById('objective-title');
-    const objectiveBriefInput = document.getElementById('objective-brief');
-    const backToProjectsButton = document.getElementById('back-to-projects-button');
-    const selectedObjectiveTitleElement = document.getElementById('selected-objective-title');
+    // const objectiveListContainer = document.getElementById('objective-list-container'); // No longer primary container
+    // const createObjectiveForm = document.getElementById('create-objective-form'); // Disabled for now
+    // const objectiveTitleInput = document.getElementById('objective-title'); // Part of disabled form
+    // const objectiveBriefInput = document.getElementById('objective-brief'); // Part of disabled form
+    // const backToProjectsButton = document.getElementById('back-to-projects-button'); // No longer used
+
+    const selectedObjectiveTitleElement = document.getElementById('selected-objective-title'); // Still used for chat header
     const backToObjectivesButton = document.getElementById('back-to-objectives-button');
 
     const projectsSection = document.getElementById('projects-section');
-    const objectivesSection = document.getElementById('objectives-section');
+    // const objectivesSection = document.getElementById('objectives-section'); // Hidden by CSS
     const chatSection = document.getElementById('chat-section');
 
     const userInputElement = document.getElementById('user-input');
@@ -125,7 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function showProjectsSection() {
         // Sidebar: projects visible, objectives hidden.
         if (projectsSection) projectsSection.style.display = 'block';
-        if (objectivesSection) objectivesSection.style.display = 'none';
+        // if (objectivesSection) objectivesSection.style.display = 'none'; // objectivesSection is now hidden by CSS
 
         // Main Content: chat hidden, assets hidden.
         if (chatSection) chatSection.style.display = 'none';
@@ -135,18 +136,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
         selectedProjectId = null;
         selectedObjectiveId = null;
-        objectives = [];
+        // objectives array is now managed per project, not globally cleared here.
         currentChatHistory = [];
 
-        clearContainer(objectiveListContainer);
+        // clearContainer(objectiveListContainer); // No longer the primary container
         clearContainer(chatOutput); // Clear main content chat
 
-        if (createObjectiveForm) createObjectiveForm.reset();
+        // if (createObjectiveForm) createObjectiveForm.reset(); // Form is disabled
         if (createProjectForm) createProjectForm.reset();
         clearContainer(createProjectForm, '.error-message');
 
         // Reset display text for headers in other sections
-        if (selectedProjectNameElement) selectedProjectNameElement.textContent = 'Project Name';
+        // if (selectedProjectNameElement) selectedProjectNameElement.textContent = 'Project Name'; // No longer used
         if (selectedObjectiveTitleElement) selectedObjectiveTitleElement.textContent = 'Objective Title';
 
         // Setup toggle for the create project form
@@ -155,44 +156,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function showObjectivesSection() {
-        // Sidebar: projects hidden, objectives visible.
-        if (projectsSection) projectsSection.style.display = 'none';
-        if (objectivesSection) objectivesSection.style.display = 'block';
-
-        // Main Content: chat hidden, assets hidden.
-        if (chatSection) chatSection.style.display = 'none';
-        if (assetsSection) assetsSection.style.display = 'none';
-
-        selectedObjectiveId = null;
-        currentChatHistory = [];
-        clearContainer(chatOutput); // Clear main content chat
-
-        if (createObjectiveForm) createObjectiveForm.reset();
-        clearContainer(createObjectiveForm, '.error-message');
-
-        // Reset display text for chat section header
-        if (selectedObjectiveTitleElement) selectedObjectiveTitleElement.textContent = 'Objective Title';
-
-        if (selectedProjectId) {
-            const currentProject = projects.find(p => p.id === selectedProjectId);
-            if (selectedProjectNameElement) selectedProjectNameElement.textContent = currentProject ? currentProject.name : "Selected Project";
-            fetchObjectives(selectedProjectId);
-        } else {
-            displayError("No project selected. Please go back and select a project.", objectiveListContainer, true);
-            showProjectsSection();
-        }
-        // Setup toggle for the create objective form
-        if (objectivesSection) {
-             setupFormToggle('create-objective-form-container', 'Create New Objective', objectivesSection);
-        }
-    }
+    // showObjectivesSection is effectively removed/replaced by nesting logic.
+    // The old showObjectivesSection logic is no longer appropriate.
+    // If a function is needed to clear the main content when navigating "back" from chat,
+    // it will be a new, simpler function or part of the event handler.
 
     async function showChatSection() {
-        // Sidebar: objectivesSection should remain visible (or projectsSection if navigation allows direct to chat).
-        // For now, assume objectivesSection is visible as we came from there.
-        // if (projectsSection) projectsSection.style.display = 'none'; // Or keep projects visible and objectives below?
-        // if (objectivesSection) objectivesSection.style.display = 'block'; // Ensure it's visible
+        // Sidebar state (expanded project with objectives) is managed by user interaction there.
+        // This function focuses only on the main content area.
 
         // Main Content: chat visible, assets hidden.
         if (chatSection) chatSection.style.display = 'block';
@@ -204,15 +175,123 @@ document.addEventListener('DOMContentLoaded', () => {
         chatInputArea.style.display = 'none'; // Initially hide chat input
 
         if (selectedObjectiveId) {
-            const objective = objectives.find(o => o.id === selectedObjectiveId);
-            selectedObjectiveTitleElement.textContent = objective ? objective.title : "Objective";
-            // Fetch and display plan will handle chat history fetching and UI visibility
+            // Find the project and then the objective for the title
+            const project = projects.find(p => p.id === selectedProjectId);
+            const objective = project ? (project.objectivesData || []).find(o => o.id === selectedObjectiveId) : null;
+
+            if (selectedObjectiveTitleElement) {
+                selectedObjectiveTitleElement.textContent = objective ? objective.title : "Objective";
+            }
             await fetchAndDisplayPlan(selectedObjectiveId);
         } else {
             displayError("No objective selected for chat.", chatOutput, true);
-            showObjectivesSection(); // Redirect if no objective ID
+            // No simple "showObjectivesSection" to go back to in the old sense.
+            // Clear main content as a fallback.
+            if (chatSection) chatSection.style.display = 'none';
         }
     }
+
+
+    // --- Objective Management (New Nested Structure) ---
+
+    async function toggleProjectObjectives(projectId, projectLiElement) {
+        const isActive = projectLiElement.classList.contains('active');
+        const objectivesContainerId = `nested-objectives-${projectId}`;
+        let objectivesContainer = projectLiElement.querySelector(`#${objectivesContainerId}`);
+
+        if (isActive) { // Project item is being opened
+            if (!objectivesContainer) {
+                objectivesContainer = document.createElement('ul');
+                objectivesContainer.id = objectivesContainerId;
+                objectivesContainer.className = 'nested-objective-list';
+                // Insert after project description or as last child if no description
+                const descP = projectLiElement.querySelector('.project-description');
+                if (descP) {
+                    descP.insertAdjacentElement('afterend', objectivesContainer);
+                } else {
+                    projectLiElement.appendChild(objectivesContainer);
+                }
+                await fetchObjectivesForProject(projectId, objectivesContainer);
+            } else {
+                objectivesContainer.style.display = 'block'; // Ensure it's visible if already loaded
+            }
+            // Clear main content when a project is expanded, before an objective is chosen
+            if (chatSection) chatSection.style.display = 'none';
+            if (assetsSection) assetsSection.style.display = 'none';
+            if (selectedObjectiveTitleElement) selectedObjectiveTitleElement.textContent = 'Objective Title';
+
+
+        } else { // Project item is being closed
+            if (objectivesContainer) {
+                // objectivesContainer.style.display = 'none'; // CSS should handle this via .project-item.active .nested-objective-list
+            }
+        }
+    }
+
+    async function fetchObjectivesForProject(projectId, containerElement) {
+        containerElement.innerHTML = '<p>Loading objectives...</p>';
+        try {
+            const response = await fetch(`/api/projects/${projectId}/objectives`);
+            if (!response.ok) throw new Error(`Failed to fetch objectives: ${response.statusText}`);
+            const fetchedObjectives = await response.json();
+
+            // Store objectives data on the project object in the main `projects` array for caching/reference
+            const project = projects.find(p => p.id === projectId);
+            if (project) {
+                project.objectivesData = fetchedObjectives; // Cache them
+            }
+
+            renderObjectivesInProject(fetchedObjectives, containerElement, projectId);
+        } catch (error) {
+            displayError(error.message, containerElement);
+            containerElement.innerHTML = `<p class="error-message">Could not load objectives.</p>`;
+        }
+    }
+
+    function renderObjectivesInProject(objectivesData, containerElement, currentProjectId) {
+        clearContainer(containerElement);
+        if (!objectivesData || objectivesData.length === 0) {
+            containerElement.innerHTML = '<p>No objectives yet for this project.</p>';
+            return;
+        }
+
+        objectivesData.forEach(objective => {
+            const li = document.createElement('li');
+            li.classList.add('objective-item');
+            li.innerHTML = `<strong>${objective.title}</strong>`;
+            if (objective.brief) {
+                const briefP = document.createElement('p');
+                briefP.classList.add('objective-brief');
+                briefP.textContent = objective.brief;
+                li.appendChild(briefP);
+            }
+            li.dataset.objectiveId = objective.id;
+
+            li.addEventListener('click', function(event) {
+                event.stopPropagation(); // Prevent project item click listener
+
+                // Remove .active-objective from any sibling objective items
+                const siblings = containerElement.querySelectorAll('.objective-item');
+                siblings.forEach(sib => sib.classList.remove('active-objective'));
+                // Add .active-objective to the clicked item
+                this.classList.add('active-objective');
+
+                selectedProjectId = currentProjectId; // Set the project ID from the parent scope
+                selectedObjectiveId = objective.id;
+
+                // Update the global `objectives` array to the currently selected project's objectives
+                // This helps if `showChatSection` or other functions rely on the global `objectives` array.
+                const project = projects.find(p => p.id === currentProjectId);
+                if (project && project.objectivesData) {
+                    objectives = project.objectivesData;
+                }
+
+                showChatSection();
+            });
+            containerElement.appendChild(li);
+        });
+    }
+
 
     // --- Plan Functions ---
     function renderPlan(plan) {
@@ -456,12 +535,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
-                // Toggle accordion for description visibility
-                this.classList.toggle('active'); // 'this' refers to projectLi
+                // Toggle accordion for description visibility & fetch/show objectives
+                this.classList.toggle('active');
+                toggleProjectObjectives(project.id, this);
 
-                // Navigation logic (original functionality)
-                selectedProjectId = project.id; // 'project' variable from forEach scope
-                showObjectivesSection();
+                // When a project item is clicked, we are not yet selecting an objective,
+                // so we should clear the main content (chat/assets).
+                if (chatSection) chatSection.style.display = 'none';
+                if (assetsSection) assetsSection.style.display = 'none';
+                if (selectedObjectiveTitleElement) selectedObjectiveTitleElement.textContent = 'Objective Title'; // Reset chat header
+                selectedObjectiveId = null; // Deselect any active objective
             });
 
             // Google Drive Connect Button / Status
@@ -484,7 +567,25 @@ document.addEventListener('DOMContentLoaded', () => {
             manageAssetsBtn.classList.add('manage-assets-btn');
             manageAssetsBtn.dataset.projectId = project.id;
             manageAssetsBtn.dataset.projectName = project.name;
-            li.appendChild(manageAssetsBtn);
+            // li.appendChild(manageAssetsBtn); // Appending actions in a dedicated div
+
+            // Edit Context Button
+            const editContextBtn = document.createElement('button');
+            editContextBtn.textContent = 'Edit Context';
+            editContextBtn.classList.add('edit-context-btn');
+            editContextBtn.dataset.projectId = project.id;
+            // li.appendChild(editContextBtn); // Appending actions in a dedicated div
+
+            // Action buttons container
+            const actionsDiv = document.createElement('div');
+            actionsDiv.classList.add('project-item-actions');
+            if (!project.googleDriveFolderId) { // Only show connect if not already connected
+                 actionsDiv.appendChild(connectGDriveBtn);
+            }
+            actionsDiv.appendChild(manageAssetsBtn);
+            actionsDiv.appendChild(editContextBtn);
+            li.appendChild(actionsDiv);
+
 
             ul.appendChild(li);
         });
@@ -492,19 +593,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Delegated event listeners for project list buttons
         ul.addEventListener('click', function(event) {
-            if (event.target.classList.contains('connect-gdrive-btn')) {
-                const projectId = event.target.dataset.projectId;
-                // Potentially store pending project info if needed, but for GDrive connect,
-                // projectId is the main piece of info for the backend.
+            const target = event.target;
+            if (target.classList.contains('connect-gdrive-btn')) {
+                event.stopPropagation();
+                const projectId = target.dataset.projectId;
                 window.location.href = `auth/google/initiate?projectId=${projectId}`;
-            } else if (event.target.classList.contains('manage-assets-btn')) {
-                selectedProjectId = event.target.dataset.projectId;
+            } else if (target.classList.contains('manage-assets-btn')) {
+                event.stopPropagation();
+                selectedProjectId = target.dataset.projectId;
                 if (selectedProjectNameForAssetsElement) {
-                    selectedProjectNameForAssetsElement.textContent = event.target.dataset.projectName;
+                    selectedProjectNameForAssetsElement.textContent = target.dataset.projectName;
                 }
                 showAssetsSection();
+            } else if (target.classList.contains('edit-context-btn')) {
+                event.stopPropagation(); // Important to prevent project item's main click
+                const projectId = target.dataset.projectId;
+                startProjectContextWorkflow(projectId);
             }
-            // Note: The direct li click for objectives is still handled by the listener attached to each li individually.
+            // The main project item click (for navigation) is handled by the listener on the `li` itself.
         });
     }
 
@@ -558,27 +664,48 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        clearContainer(contextQuestionsContainer);
+        clearContainer(contextQuestionsContainer); // Clear previous questions/answers
         contextQuestionsContainer.innerHTML = '<p>Loading context questions...</p>';
         projectContextModal.style.display = 'block';
-        submitContextAnswersBtn.style.display = 'none'; // Hide until questions are loaded
+        submitContextAnswersBtn.style.display = 'none'; // Hide until questions (and answers) are loaded
+        submitContextAnswersBtn.textContent = 'Submit Answers'; // Default text
 
         try {
-            const response = await fetch(`api/projects/${projectId}/context-questions`, { method: 'POST' });
-            if (!response.ok) {
-                const errData = await response.json().catch(() => ({error: `Failed to fetch context questions: ${response.statusText}`}));
+            // Fetch questions (assuming this endpoint generates or retrieves a list of questions)
+            const questionsResponse = await fetch(`api/projects/${projectId}/context-questions`, { method: 'POST' });
+            if (!questionsResponse.ok) {
+                const errData = await questionsResponse.json().catch(() => ({ error: `Failed to fetch context questions: ${questionsResponse.statusText}` }));
                 throw new Error(errData.error);
             }
-            const questions = await response.json();
+            const questions = await questionsResponse.json();
 
-            clearContainer(contextQuestionsContainer);
+            clearContainer(contextQuestionsContainer); // Clear "Loading..."
             if (!questions || questions.length === 0) {
-                contextQuestionsContainer.innerHTML = '<p>No context questions were generated for this project. You can close this window.</p>';
-                // Optionally hide submit button if no questions, or allow submitting empty answers?
-                // For now, let's assume if no questions, workflow ends.
+                contextQuestionsContainer.innerHTML = '<p>No context questions are defined for this project type. You can close this window.</p>';
                 submitContextAnswersBtn.style.display = 'none';
                 return;
             }
+
+            // Fetch existing answers - using the project object from the local `projects` array
+            const project = projects.find(p => p.id === projectId);
+            let existingAnswersMap = new Map();
+
+            if (project && project.projectContextAnswers && typeof project.projectContextAnswers === 'string') {
+                const entries = project.projectContextAnswers.split('\n\n');
+                entries.forEach(entry => {
+                    const qMatch = entry.match(/Q: (.*?)\nA: ([\s\S]*?)(?=(Q:|$))/); // Regex to capture multi-line answers
+                    if (qMatch && qMatch.length >= 3) {
+                        existingAnswersMap.set(qMatch[1].trim(), qMatch[2].trim());
+                    }
+                });
+                if (existingAnswersMap.size > 0) {
+                    submitContextAnswersBtn.textContent = 'Save Changes';
+                }
+            }
+            // If API call for answers is preferred:
+            // const answersResponse = await fetch(`/api/projects/${projectId}/context-answers`);
+            // if (answersResponse.ok) { /* process answers */ }
+
 
             questions.forEach((question, index) => {
                 const questionDiv = document.createElement('div');
@@ -591,34 +718,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 const textarea = document.createElement('textarea');
                 textarea.id = `context-answer-${index}`;
                 textarea.name = `context-answer-${index}`;
-                textarea.rows = 3;
-                textarea.setAttribute('data-question', question); // Store the question itself
+                // textarea.rows = 3; // min-height is now preferred via CSS
+                textarea.setAttribute('data-question', question);
+                textarea.value = existingAnswersMap.get(question.trim()) || ''; // Pre-fill
 
                 questionDiv.appendChild(label);
                 questionDiv.appendChild(textarea);
-                if (contextAnswersForm) { // If form element is used
+
+                // contextAnswersForm is the <form> element. Append to it.
+                if (contextAnswersForm) {
                     contextAnswersForm.appendChild(questionDiv);
-                } else { // Fallback to container if no form
+                } else { // Fallback if form isn't the direct container
                     contextQuestionsContainer.appendChild(questionDiv);
                 }
             });
 
+            // If using contextAnswersForm, ensure it's cleared before appending.
+            // This is handled by clearContainer(contextQuestionsContainer) if contextAnswersForm is inside it.
+            // If contextAnswersForm is separate, it should also be cleared.
+            // For now, assuming questions are appended to contextAnswersForm which is inside contextQuestionsContainer.
+
             submitContextAnswersBtn.style.display = 'block';
             submitContextAnswersBtn.disabled = false;
-            // Remove previous listener before adding a new one to avoid multiple submissions
+
+            // Clone and replace the button to remove old event listeners reliably
             const newSubmitBtn = submitContextAnswersBtn.cloneNode(true);
+            newSubmitBtn.textContent = submitContextAnswersBtn.textContent; // Preserve dynamic text
             submitContextAnswersBtn.parentNode.replaceChild(newSubmitBtn, submitContextAnswersBtn);
-            // Re-assign the variable to the new button to ensure it's the one being used
-            window.submitContextAnswersBtn = document.getElementById('submit-context-answers-btn'); // Assuming it has this ID
+            // Update the global reference to the new button
+            window.submitContextAnswersBtn = newSubmitBtn;
 
             window.submitContextAnswersBtn.addEventListener('click', function handler(event) {
-                 // `this` refers to the button, use window.submitContextAnswersBtn to be safe if needed
+                event.preventDefault(); // Prevent default form submission if it's a button inside a form
                 handleSubmitContextAnswers(projectId);
-                // It's important to remove the event listener or ensure it's only added once.
-                // Cloning and replacing the button (as done above) is a common way to clear listeners.
-                // Alternatively, use `this.removeEventListener('click', handler);` if you are sure about the context.
             });
-
 
         } catch (error) {
             displayError(`Error starting project context workflow: ${error.message}`, contextQuestionsContainer);
@@ -627,29 +760,52 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function handleSubmitContextAnswers(projectId) {
-        if (!projectContextModal || !contextQuestionsContainer || !window.submitContextAnswersBtn) {
+        // Ensure the button reference is the current one in the DOM
+        const currentSubmitBtn = document.getElementById('submit-context-answers-btn');
+        if (!projectContextModal || !contextQuestionsContainer || !currentSubmitBtn) {
             console.error('Project context modal elements not found for submitting answers.');
             return;
         }
 
-        window.submitContextAnswersBtn.disabled = true;
-        addMessageToUI('user', 'Submitting project context answers...', contextQuestionsContainer); // Temporary message in modal
+        currentSubmitBtn.disabled = true;
+        // Add temporary message inside modal, perhaps near the button or in a dedicated status area
+        const tempStatus = document.createElement('p');
+        tempStatus.textContent = 'Submitting...';
+        tempStatus.style.textAlign = 'center';
+        tempStatus.style.marginTop = '10px';
+        currentSubmitBtn.insertAdjacentElement('afterend', tempStatus);
+
 
         let collectedAnswers = "";
         const textareas = (contextAnswersForm || contextQuestionsContainer).querySelectorAll('textarea');
+        // Use contextAnswersForm if defined and contains the textareas, otherwise fallback to contextQuestionsContainer
+        const formToQuery = contextAnswersForm && contextAnswersForm.contains(contextQuestionsContainer.querySelector('textarea'))
+                            ? contextAnswersForm
+                            : contextQuestionsContainer;
+        const textareas = formToQuery.querySelectorAll('textarea');
+
         textareas.forEach(textarea => {
             const question = textarea.getAttribute('data-question');
             const answer = textarea.value.trim();
-            if (answer) { // Only include answered questions
-                collectedAnswers += `Q: ${question}\nA: ${answer}\n\n`;
-            }
+            // Include question even if answer is empty, to signify it was presented.
+            // Backend can decide to store empty answers or not.
+            // For display consistency, it might be good to save the Q/A structure.
+            collectedAnswers += `Q: ${question}\nA: ${answer}\n\n`;
         });
 
-        if (!collectedAnswers.trim()) {
-            displayError('Please provide answers to at least one question.', contextQuestionsContainer);
-            window.submitContextAnswersBtn.disabled = false;
-            return;
+        // Allow submitting if at least one question was presented, even if answers are empty.
+        // The check for !collectedAnswers.trim() might be too strict if empty answers are permissible.
+        // For now, we keep it: if all answers are empty, it's like not submitting anything.
+        if (!collectedAnswers.trim() && textareas.length > 0) {
+            // If there were questions, but all answers are empty.
+            // Consider if this should be an error or if empty answers should be submittable.
+            // For now, let's allow submitting empty answers (by removing the check or adjusting it)
+            // displayError('Please provide answers to at least one question.', contextQuestionsContainer);
+            // currentSubmitBtn.disabled = false;
+            // if (tempStatus) tempStatus.remove();
+            // return;
         }
+
 
         try {
             const response = await fetch(`api/projects/${projectId}/context-answers`, {
@@ -659,122 +815,59 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (!response.ok) {
-                const errData = await response.json().catch(() => ({error: `Failed to submit context answers: ${response.statusText}`}));
+                const errData = await response.json().catch(() => ({ error: `Failed to submit context answers: ${response.statusText}` }));
                 throw new Error(errData.error);
             }
             const result = await response.json();
 
             projectContextModal.style.display = 'none';
-            // Display a success notification on the main page
             const notificationDiv = document.createElement('div');
             notificationDiv.id = 'user-notification';
             notificationDiv.textContent = result.message || 'Project context updated successfully!';
             notificationDiv.className = 'notification-success';
-            document.body.insertBefore(notificationDiv, document.body.firstChild);
+
+            const appContainer = document.getElementById('app-container');
+            if (appContainer) {
+                appContainer.insertBefore(notificationDiv, appContainer.firstChild);
+            } else {
+                document.body.prepend(notificationDiv);
+            }
             setTimeout(() => {
                 notificationDiv.style.opacity = '0';
                 setTimeout(() => notificationDiv.remove(), 500);
             }, 3000);
 
-            // Optionally, update the project in the local `projects` array
+            // Update project in local cache
             const projectIndex = projects.findIndex(p => p.id === projectId);
-            if (projectIndex !== -1 && result.projectContextAnswers) {
-                projects[projectIndex].projectContextAnswers = result.projectContextAnswers;
-                // If you have a function that renders project details, call it here
-                // renderProjects(); // Might be too broad, consider updating just the specific project display if detailed view exists
+            if (projectIndex !== -1) {
+                // Assuming the backend returns the updated project or at least the context answers
+                if(result.project) {
+                    projects[projectIndex] = result.project;
+                } else if (result.projectContextAnswers) {
+                     projects[projectIndex].projectContextAnswers = result.projectContextAnswers;
+                }
             }
-            fetchProjects(); // Re-fetch projects to update list with any new indicators
+            // No need to call fetchProjects() if we update local cache, unless other project data might change.
+            // For now, let's assume updating local cache is enough or backend returns full project.
+            // If not, uncomment: await fetchProjects();
+            if (!result.project && !result.projectContextAnswers) { // If backend didn't return updated data
+                await fetchProjects(); // Fallback to refetch all
+            }
+
 
         } catch (error) {
             displayError(`Error submitting context answers: ${error.message}`, contextQuestionsContainer);
-            window.submitContextAnswersBtn.disabled = false;
+        } finally {
+            currentSubmitBtn.disabled = false;
+            if (tempStatus) tempStatus.remove();
         }
     }
 
 
     // --- Objective Functions ---
-    async function fetchObjectives(projectId) {
-        if (!projectId) return;
-        try {
-            clearContainer(objectiveListContainer, '.error-message');
-            objectiveListContainer.innerHTML = `<p>Loading objectives...</p>`;
-            const response = await fetch(`api/projects/${projectId}/objectives`);
-            if (!response.ok) throw new Error(`Failed to fetch objectives: ${response.statusText} (${response.status})`);
-            objectives = await response.json();
-            renderObjectives();
-        } catch (error) {
-            displayError(error.message, objectiveListContainer);
-        }
-    }
-
-    function renderObjectives() {
-        clearContainer(objectiveListContainer);
-        if (objectives.length === 0) {
-            objectiveListContainer.innerHTML = '<p>No objectives for this project yet. Create one below!</p>';
-            return;
-        }
-        const ul = document.createElement('ul');
-        ul.classList.add('objective-list');
-        objectives.forEach(objective => {
-            const li = document.createElement('li');
-            li.classList.add('objective-item');
-            li.innerHTML = `<strong>${objective.title}</strong>`;
-            li.dataset.objectiveId = objective.id;
-            if (objective.brief) {
-                const briefP = document.createElement('p');
-                briefP.classList.add('objective-brief'); // Ensure this class exists for CSS
-                briefP.textContent = objective.brief;
-                li.appendChild(briefP);
-            }
-            // Main click listener for the objective item
-            li.addEventListener('click', function(event) {
-                 // If the click is on a button within the li (if any added in future), handle here
-                if (event.target.tagName === 'BUTTON' || event.target.closest('button')) {
-                    return;
-                }
-
-                // Toggle accordion for brief visibility
-                this.classList.toggle('active'); // 'this' refers to objectiveLi
-
-                // Navigation logic
-                selectedObjectiveId = objective.id; // 'objective' from forEach scope
-                showChatSection();
-            });
-            ul.appendChild(li);
-        });
-        objectiveListContainer.appendChild(ul);
-    }
-
-    async function handleCreateObjectiveSubmit(event) {
-        event.preventDefault();
-        clearContainer(createObjectiveForm, '.error-message');
-        const title = objectiveTitleInput.value.trim();
-        const brief = objectiveBriefInput.value.trim();
-        if (!title) {
-            displayError('Objective title is required.', createObjectiveForm);
-            return;
-        }
-        if (!selectedProjectId) {
-            displayError('No project selected. Cannot create objective.', createObjectiveForm, true);
-            return;
-        }
-        try {
-            const response = await fetch(`api/projects/${selectedProjectId}/objectives`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, brief }),
-            });
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: 'Failed to create objective' }));
-                throw new Error(errorData.error || `Server error: ${response.status}`);
-            }
-            fetchObjectives(selectedProjectId);
-            objectiveTitleInput.value = '';
-            objectiveBriefInput.value = '';
-        } catch (error) {
-            displayError(error.message, createObjectiveForm);
-        }
-    }
+    // The old fetchObjectives and renderObjectives are replaced by
+    // fetchObjectivesForProject and renderObjectivesInProject.
+    // The old handleCreateObjectiveSubmit and its form are currently disabled.
 
     // --- Chat Functions ---
     function addMessageToUI(speaker, text) {
@@ -913,9 +1006,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Event Listeners ---
     if (createProjectForm) createProjectForm.addEventListener('submit', handleCreateProjectSubmit);
-    if (createObjectiveForm) createObjectiveForm.addEventListener('submit', handleCreateObjectiveSubmit);
-    if (backToProjectsButton) backToProjectsButton.addEventListener('click', showProjectsSection);
-    if (backToObjectivesButton) backToObjectivesButton.addEventListener('click', showObjectivesSection);
+    // if (createObjectiveForm) createObjectiveForm.addEventListener('submit', handleCreateObjectiveSubmit); // Form disabled
+    // if (backToProjectsButton) backToProjectsButton.addEventListener('click', showProjectsSection); // Button removed / section hidden
+
+    if (backToObjectivesButton) { // This button is in the chat section
+        backToObjectivesButton.addEventListener('click', () => {
+            // "Back to Objectives" now means clearing the main content,
+            // as objectives are shown nested in the sidebar.
+            if (chatSection) chatSection.style.display = 'none';
+            if (assetsSection) assetsSection.style.display = 'none'; // Just in case
+            if (selectedObjectiveTitleElement) selectedObjectiveTitleElement.textContent = 'Objective Title';
+
+            // Remove active objective highlighting from all nested lists
+            document.querySelectorAll('.nested-objective-list .objective-item.active-objective').forEach(activeItem => {
+                activeItem.classList.remove('active-objective');
+            });
+            selectedObjectiveId = null; // Deselect objective
+        });
+    }
     if (backToProjectsFromAssetsButton) backToProjectsFromAssetsButton.addEventListener('click', showProjectsSection);
 
 

@@ -4,48 +4,49 @@ html, body {
     margin: 0;
     font-family: sans-serif;
     line-height: 1.6;
-    background-color: #f4f4f4; /* Moved from body to here for full page bg */
+    background-color: #f4f4f4;
     color: #333;
 }
 
 #app-container {
     display: flex;
     flex-direction: column;
-    min-height: 100vh; /* Use min-height to ensure it covers viewport height */
-    background-color: #f4f4f4; /* Ensure app container has a background */
+    min-height: 100vh;
+    background-color: #f4f4f4;
 }
 
 header {
     background: #333;
     color: #fff;
-    padding: 1rem 20px; /* Added horizontal padding */
+    padding: 1rem 20px;
     text-align: center;
-    flex-shrink: 0; /* Prevent header from shrinking */
+    flex-shrink: 0;
 }
 
 header h1 {
     margin: 0;
-    font-size: 1.8em; /* Slightly adjust for responsiveness */
+    font-size: 1.8em;
 }
 
 main {
     flex-grow: 1;
-    display: flex; /* To allow app-layout to fill it */
+    display: flex;
 }
 
 #app-layout {
     display: flex;
     flex-grow: 1;
-    width: 100%; /* Ensure it takes full width of main */
-    overflow: hidden; /* Children will handle their own scrolling */
+    width: 100%;
+    overflow: hidden;
 }
 
 #sidebar {
-    flex: 0 0 300px; /* Fixed width, doesn't grow or shrink */
-    background-color: #e9ecef; /* Light grey for sidebar */
+    flex: 0 0 300px;
+    background-color: #e9ecef;
     padding: 20px;
-    overflow-y: auto; /* Allow sidebar to scroll if content is long */
-    border-right: 1px solid #ccc; /* Visual separation */
+    overflow-y: auto;
+    border-left: 1px solid #ccc;
+    order: 2;
 }
 
 #sidebar h2 {
@@ -56,27 +57,34 @@ main {
     font-size: 1.3em;
 }
 
-#sidebar h3 { /* General h3 in sidebar, can be overridden by .form-toggle-header */
+#sidebar h3 {
     font-size: 1.1em;
     color: #555;
-    margin-top: 15px; /* Add some space above general h3s */
+    margin-top: 15px;
     margin-bottom: 10px;
 }
 
 #main-content {
     flex-grow: 1;
     padding: 20px;
-    overflow-y: auto; /* Allow main content to scroll */
-    background-color: #fff; /* White background for content area */
+    overflow-y: auto;
+    background-color: #fff;
+    order: 1;
 }
 
-#projects-section, #objectives-section, #chat-section, #assets-section {
+/* Hide the old objectives section and its form container */
+#objectives-section, #create-objective-form-container {
+    display: none !important;
+}
+
+
+#projects-section, #chat-section, #assets-section { /* Removed #objectives-section from this rule */
     margin-bottom: 25px;
     padding: 0;
     border: none;
 }
 
-#projects-section h2, #objectives-section h2, #chat-section h2, #assets-section h3, #assets-section h4 {
+#projects-section h2, #chat-section h2, #assets-section h3, #assets-section h4 { /* Removed #objectives-section h2 */
     color: #333;
     border-bottom: 1px solid #eee;
     padding-bottom: 10px;
@@ -88,14 +96,14 @@ main {
     cursor: pointer;
     background-color: #dde2e6;
     padding: 10px 15px;
-    margin-top: 20px; /* Space above the header */
-    margin-bottom: 0; /* No space between header and form if active */
+    margin-top: 20px;
+    margin-bottom: 0;
     border: 1px solid #c5cdd3;
-    border-radius: 4px 4px 0 0; /* Rounded top corners */
+    border-radius: 4px 4px 0 0;
     font-size: 1.1em;
     font-weight: bold;
     color: #333;
-    display: flex; /* To align icon and text */
+    display: flex;
     align-items: center;
 }
 
@@ -103,47 +111,37 @@ main {
     content: '+';
     margin-right: 10px;
     font-weight: bold;
-    display: inline-block; /* Needed for margin/padding */
-    color: #007bff; /* Icon color */
-    font-size: 1.2em; /* Make icon slightly larger */
+    display: inline-block;
+    color: #007bff;
+    font-size: 1.2em;
 }
 
 .form-toggle-header.active::before {
     content: '-';
 }
 
-/* Original H3 for forms - now these are replaced by form-toggle-header */
-/* We can remove or comment out if #create-project-form-container > h3 is no longer used */
-/*
-#create-project-form-container h3, #create-objective-form-container h3 {
-    margin-top: 0;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #eee;
-}
-*/
 
-#create-project-form-container, #create-objective-form-container {
-    display: none; /* Hidden by default, toggled by JS */
+#create-project-form-container { /* #create-objective-form-container is hidden globally */
+    display: none;
     padding: 15px;
     background-color: #f8f9fa;
     border: 1px solid #d1d9e0;
-    border-top: none; /* Connect to header if header is directly above */
-    border-radius: 0 0 4px 4px; /* Rounded bottom corners, to match header */
-    margin-top: 0; /* Remove margin-top as it's handled by form-toggle-header */
-    margin-bottom: 15px; /* Space after the form */
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    margin-top: 0;
+    margin-bottom: 15px;
 }
 
-#create-project-form-container.active,
-#create-objective-form-container.active {
-    display: block; /* Shown when active */
+#create-project-form-container.active {
+    display: block;
 }
 
 
-#create-project-form div, #create-objective-form div {
+#create-project-form div { /* Removed #create-objective-form div */
     margin-bottom: 12px;
 }
 
-#create-project-form label, #create-objective-form label, #upload-asset-form label {
+#create-project-form label, #upload-asset-form label { /* Removed #create-objective-form label */
     display: block;
     margin-bottom: 6px;
     font-weight: bold;
@@ -152,17 +150,16 @@ main {
 
 #create-project-form input[type="text"],
 #create-project-form textarea,
-#create-objective-form input[type="text"],
-#create-objective-form textarea,
+/* Removed #create-objective-form input & textarea */
 #upload-asset-form input[type="file"] {
-    width: calc(100% - 22px); /* Adjusted for 10px padding on each side */
+    width: calc(100% - 22px);
     padding: 10px;
     border: 1px solid #ccc;
     border-radius: 4px;
     font-size: 1em;
 }
 
-#create-project-form textarea, #create-objective-form textarea {
+#create-project-form textarea { /* Removed #create-objective-form textarea */
     min-height: 70px;
     resize: vertical;
 }
@@ -178,84 +175,136 @@ button, input[type="submit"] {
     transition: background-color 0.2s ease-in-out;
     display: inline-block;
     text-align: center;
+    margin-top: 5px;
+    margin-bottom: 5px;
 }
 
 button:hover, input[type="submit"]:hover {
     background: #0056b3;
 }
 
-#connect-facebook-btn { background: #3b5998; margin-bottom: 5px; }
+#connect-facebook-btn { background: #3b5998; }
 #connect-facebook-btn:hover { background: #2f477a; }
-#connect-tiktok-btn { background: #000; color: #fff; margin-bottom: 5px;}
+#connect-tiktok-btn { background: #000; color: #fff; }
 #connect-tiktok-btn:hover { background: #333; }
-#connect-linkedin-btn { background: #0077b5; margin-bottom: 5px;}
+#connect-linkedin-btn { background: #0077b5; }
 #connect-linkedin-btn:hover { background: #005582; }
 
-#back-to-projects-button, #back-to-objectives-button, #back-to-projects-from-assets-button {
+.edit-context-btn {
+    background-color: #6c757d;
+    padding: 6px 12px;
+    font-size: 0.9em;
+    margin-left: 8px;
+}
+.edit-context-btn:hover {
+    background-color: #5a6268;
+}
+
+
+#back-to-objectives-button, #back-to-projects-from-assets-button { /* Removed #back-to-projects-button */
     background-color: #6c757d;
     margin-bottom: 15px;
 }
-#back-to-projects-button:hover, #back-to-objectives-button:hover, #back-to-projects-from-assets-button:hover {
+#back-to-objectives-button:hover, #back-to-projects-from-assets-button:hover { /* Removed #back-to-projects-button:hover */
     background-color: #545b62;
 }
 
-.project-list, .objective-list, #asset-list-container ul {
+.project-list, #asset-list-container ul { /* Removed .objective-list (global) */
     list-style: none;
     padding: 0;
 }
 
-.project-item, .objective-item { /* Removed .asset-item as it's not accordion */
+.project-item { /* .objective-item styling will be specific for nested ones */
     background: #fff;
     border: 1px solid #ddd;
     padding: 12px 18px;
     margin-bottom: 10px;
     border-radius: 4px;
-    cursor: pointer; /* Crucial for accordion items */
+    cursor: pointer;
     transition: background-color 0.2s ease;
-    position: relative; /* For positioning pseudo-elements if needed */
+    position: relative;
 }
 
-.project-item:hover, .objective-item:hover {
+.project-item-actions {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+
+.project-item:hover { /* Removed .objective-item:hover (global) */
     background: #f5f5f5;
 }
 
-.project-item::before, .objective-item::before {
+.project-item::before { /* Removed .objective-item::before (global) */
     content: '+';
     margin-right: 10px;
     font-weight: bold;
-    display: inline-block; /* Allows margin */
+    display: inline-block;
     color: #007bff;
-    font-size: 1.1em; /* Slightly larger icon */
-    transition: transform 0.2s ease-in-out; /* Smooth rotation for future icon changes */
+    font-size: 1.1em;
+    transition: transform 0.2s ease-in-out;
 }
 
-.project-item.active::before, .objective-item.active::before {
+.project-item.active::before { /* Removed .objective-item.active::before (global) */
     content: '-';
-    /* transform: rotate(45deg); Example if using a different icon */
 }
 
-.project-description, .objective-brief { /* Class for objective brief needs to be added in HTML/JS */
-    display: none; /* Hidden by default */
+.project-description,
+.project-item .nested-objective-list {
+    display: none;
     margin-top: 10px;
-    padding-left: 28px; /* Indent content (aligned with text after icon) */
-    font-size: 0.9em;
-    color: #555;
-    line-height: 1.5;
+    padding-left: 20px; /* Indent project description and nested list container */
 }
 
 .project-item.active .project-description,
-.objective-item.active .objective-brief {
-    display: block; /* Shown when active */
+.project-item.active .nested-objective-list {
+    display: block;
 }
 
-/* Asset items are not accordions, so they don't need ::before or active states for content toggle */
+.nested-objective-list {
+    list-style: none;
+    padding-left: 15px; /* Further indent nested objectives relative to project description padding */
+    margin-top: 10px;
+    border-top: 1px dashed #ddd; /* Separator from project description */
+    padding-top: 10px;
+}
+
+.nested-objective-list .objective-item {
+    background-color: #f9f9f9; /* Slightly different background for nested items */
+    border: 1px solid #eee;
+    padding: 8px 12px; /* Smaller padding for nested items */
+    margin-bottom: 6px;
+    border-radius: 3px;
+    font-size: 0.95em;
+    cursor: pointer;
+}
+.nested-objective-list .objective-item:hover {
+    background-color: #f0f0f0;
+}
+
+.nested-objective-list .objective-item.active-objective {
+    background-color: #ddeeff; /* Highlight for active objective */
+    border-color: #aaccee;
+    font-weight: bold; /* Make active objective text bold */
+}
+
+.nested-objective-list .objective-item .objective-brief { /* Styling for brief if shown */
+    font-size: 0.9em;
+    color: #666;
+    margin-top: 4px;
+    padding-left: 10px; /* Indent brief under objective title */
+    display: block; /* Make brief visible by default in nested view */
+}
+
+
 .asset-item {
     background: #fff;
     border: 1px solid #ddd;
     padding: 12px 18px;
     margin-bottom: 10px;
     border-radius: 4px;
-    /* cursor: pointer; /* Not needed if not clickable for accordion */
 }
 .asset-item:hover {
     background: #f5f5f5;
@@ -421,7 +470,7 @@ footer {
 .modal-content {
     background-color: #fefefe;
     margin: 10vh auto;
-    padding: 25px 30px;
+    padding: 20px 30px;
     border: 1px solid #bbb;
     width: 90%;
     max-width: 600px;
@@ -430,11 +479,18 @@ footer {
     position: relative;
 }
 
+.modal-content h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 1.5em;
+}
+
+
 .close-button {
     color: #888;
     position: absolute;
-    top: 10px;
-    right: 15px;
+    top: 15px;
+    right: 20px;
     font-size: 32px;
     font-weight: bold;
 }
@@ -447,14 +503,15 @@ footer {
 }
 
 #context-questions-container .context-question-item {
-    margin-bottom: 18px;
+    margin-bottom: 20px;
 }
 
 #context-questions-container label {
     display: block;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
     font-weight: bold;
-    color: #444;
+    color: #333;
+    font-size: 1.05em;
 }
 
 #context-questions-container textarea {
@@ -462,10 +519,11 @@ footer {
     padding: 10px;
     border: 1px solid #ccc;
     border-radius: 4px;
-    min-height: 70px;
+    min-height: 80px;
     font-family: inherit;
     font-size: 1em;
     resize: vertical;
+    background-color: #fff;
 }
 
 #submit-context-answers-btn {
@@ -476,7 +534,10 @@ footer {
     border-radius: 5px;
     cursor: pointer;
     font-size: 1.05em;
-    margin-top: 15px;
+    margin-top: 10px;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 #submit-context-answers-btn:hover {
@@ -497,14 +558,16 @@ footer {
         width: 100%;
         flex-basis: auto;
         max-height: 50vh;
-        border-right: none;
+        border-left: none;
         border-bottom: 1px solid #ccc;
         padding: 15px;
+        order: 1;
     }
 
     #main-content {
         width: 100%;
         padding: 15px;
+        order: 2;
     }
 
     header {
@@ -518,6 +581,11 @@ footer {
         padding: 12px 15px;
         font-size: 1em;
     }
+    .edit-context-btn {
+        padding: 8px 12px;
+        font-size: 0.9em;
+    }
+
 
     #user-input {
         padding: 12px 15px;
@@ -536,6 +604,11 @@ footer {
         margin: 5vh auto;
         padding: 20px;
     }
+    .modal-content h2 {
+        font-size: 1.3em;
+        margin-bottom: 15px;
+    }
+
 
     #user-notification {
         width: 90%;
@@ -543,14 +616,14 @@ footer {
         font-size: 0.9em;
     }
     .form-toggle-header {
-        font-size: 1em; /* Adjust for smaller screens */
+        font-size: 1em;
         padding: 8px 12px;
     }
 }
 
 @media (max-width: 480px) {
     #sidebar {
-        max-height: 45vh; /* Adjusted from 40vh for a bit more space if needed */
+        max-height: 45vh;
     }
 
     #sidebar h2 { font-size: 1.2em; }
@@ -558,26 +631,41 @@ footer {
 
     #create-project-form input[type="text"],
     #create-project-form textarea,
-    #create-objective-form input[type="text"],
-    #create-objective-form textarea,
+    /* #create-objective-form input & textarea removed */
     #upload-asset-form input[type="file"] {
-        width: calc(100% - 20px); /* Adjusted for 10px padding, if changed */
+        width: calc(100% - 20px);
     }
 
     footer {
         padding: 15px;
         font-size: 0.85em;
     }
-    .project-item::before, .objective-item::before, .form-toggle-header::before {
-        font-size: 1em; /* Ensure icons are not too large */
+    .project-item::before, /* .objective-item::before removed (global) */
+    .form-toggle-header::before {
+        font-size: 1em;
         margin-right: 8px;
     }
-    .project-description, .objective-brief {
-        padding-left: 20px; /* Adjust indentation */
+    .project-description,
+    .project-item .nested-objective-list .objective-item .objective-brief { /* More specific for brief */
+        padding-left: 20px;
     }
-}
+    .nested-objective-list {
+        padding-left: 10px; /* Adjust nested list padding for smaller screens */
+    }
+    .nested-objective-list .objective-item {
+        font-size: 0.9em; /* Adjust nested objective item font size */
+    }
 
-/* Ensure upload asset form container also hidden by default if it's meant to be toggled */
-/* #upload-asset-form-container { display: none; } */
-/* #upload-asset-form-container.active { display: block; } */
-/* This was not part of current subtask, but good to keep in mind */
+
+    #context-questions-container label {
+        font-size: 1em;
+    }
+    #context-questions-container textarea {
+        min-height: 60px;
+    }
+    #submit-context-answers-btn {
+        font-size: 1em;
+        padding: 10px 18px;
+    }
+
+}
