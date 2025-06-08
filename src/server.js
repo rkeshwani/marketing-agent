@@ -833,7 +833,7 @@ app.post('/api/projects', (req, res) => {
         const newProject = dataStore.addProject(projectData);
         res.status(201).json(newProject);
     } catch (error) {
-        console.error('Error creating project via POST /api/projects:', error);
+        console.error('Error creating project via POST /api/projects:', error.message, error.stack);
         res.status(500).json({ error: 'Failed to create project. Please try again.' });
     }
 });
@@ -844,7 +844,7 @@ app.get('/api/projects', (req, res) => {
         const projects = dataStore.getAllProjects();
         res.status(200).json(projects);
     } catch (error) {
-        console.error('Error getting projects:', error);
+        console.error('Error getting projects:', error.message, error.stack);
         res.status(500).json({ error: 'Failed to retrieve projects' });
     }
 });
@@ -874,7 +874,7 @@ app.put('/api/projects/:projectId', (req, res) => {
     }
 
     try {
-        const updatedProject = dataStore.updateProjectById(projectId, name, description);
+        const updatedProject = dataStore.updateProjectById(projectId, { name, description });
         if (!updatedProject) {
             return res.status(404).json({ error: 'Project not found for update' });
         }

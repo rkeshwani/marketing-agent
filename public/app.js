@@ -2,7 +2,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/service-worker.js')
+            navigator.serviceWorker.register('service-worker.js')
                 .then(registration => console.log('ServiceWorker registration successful with scope: ', registration.scope))
                 .catch(error => console.log('ServiceWorker registration failed: ', error));
         });
@@ -316,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 } else if (!currentObjective.plan.steps || currentObjective.plan.steps.length === 0) {
                     addMessageToUI('agent', 'Plan is empty or status is unclear. Attempting to initialize...');
-                    const initResponse = await fetch(`/api/objectives/${objectiveId}/initialize-agent`, { method: 'POST' });
+                    const initResponse = await fetch(`api/objectives/${objectiveId}/initialize-agent`, { method: 'POST' });
                     if (!initResponse.ok) throw new Error(`Failed to initialize plan: ${initResponse.statusText}`);
                     const newObjectiveData = await initResponse.json();
 
@@ -333,7 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } else {
                 addMessageToUI('agent', 'No plan found. Attempting to initialize a new plan...');
-                const initResponse = await fetch(`/api/objectives/${objectiveId}/initialize-agent`, { method: 'POST' });
+                const initResponse = await fetch(`api/objectives/${objectiveId}/initialize-agent`, { method: 'POST' });
                 if (!initResponse.ok) throw new Error(`Failed to initialize plan: ${initResponse.statusText}`);
                 const newObjectiveData = await initResponse.json();
 
@@ -362,7 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             clearContainer(projectListContainer, '.error-message');
             projectListContainer.innerHTML = '<p>Loading projects...</p>';
-            const response = await fetch('/api/projects');
+            const response = await fetch('api/projects');
             if (!response.ok) throw new Error(`Failed to fetch projects: ${response.statusText} (${response.status})`);
             projects = await response.json();
             renderProjects();
@@ -427,7 +427,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const projectId = event.target.dataset.projectId;
                 // Potentially store pending project info if needed, but for GDrive connect,
                 // projectId is the main piece of info for the backend.
-                window.location.href = `/auth/google/initiate?projectId=${projectId}`;
+                window.location.href = `auth/google/initiate?projectId=${projectId}`;
             } else if (event.target.classList.contains('manage-assets-btn')) {
                 selectedProjectId = event.target.dataset.projectId;
                 if (selectedProjectNameForAssetsElement) {
@@ -449,7 +449,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         try {
-            const response = await fetch('/api/projects', {
+            const response = await fetch('api/projects', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ name, description }),
@@ -495,7 +495,7 @@ document.addEventListener('DOMContentLoaded', () => {
         submitContextAnswersBtn.style.display = 'none'; // Hide until questions are loaded
 
         try {
-            const response = await fetch(`/api/projects/${projectId}/context-questions`, { method: 'POST' });
+            const response = await fetch(`api/projects/${projectId}/context-questions`, { method: 'POST' });
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({error: `Failed to fetch context questions: ${response.statusText}`}));
                 throw new Error(errData.error);
@@ -583,7 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const response = await fetch(`/api/projects/${projectId}/context-answers`, {
+            const response = await fetch(`api/projects/${projectId}/context-answers`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ userAnswersString: collectedAnswers.trim() }),
@@ -629,7 +629,7 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             clearContainer(objectiveListContainer, '.error-message');
             objectiveListContainer.innerHTML = `<p>Loading objectives...</p>`;
-            const response = await fetch(`/api/projects/${projectId}/objectives`);
+            const response = await fetch(`api/projects/${projectId}/objectives`);
             if (!response.ok) throw new Error(`Failed to fetch objectives: ${response.statusText} (${response.status})`);
             objectives = await response.json();
             renderObjectives();
@@ -680,7 +680,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         try {
-            const response = await fetch(`/api/projects/${selectedProjectId}/objectives`, {
+            const response = await fetch(`api/projects/${selectedProjectId}/objectives`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ title, brief }),
@@ -725,7 +725,7 @@ document.addEventListener('DOMContentLoaded', () => {
         addMessageToUI('agent', 'Loading chat history...');
 
         try {
-            const response = await fetch(`/api/objectives/${objectiveId}`); // Fetch full objective
+            const response = await fetch(`api/objectives/${objectiveId}`); // Fetch full objective
             if (!response.ok) {
                 throw new Error(`Failed to fetch objective details for chat history: ${response.statusText}`);
             }
@@ -763,7 +763,7 @@ document.addEventListener('DOMContentLoaded', () => {
         userInputElement.value = ''; // Clear input field
 
         try {
-            const response = await fetch(`/api/objectives/${selectedObjectiveId}/chat`, {
+            const response = await fetch(`api/objectives/${selectedObjectiveId}/chat`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -852,7 +852,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
             try {
-                const response = await fetch(`/api/objectives/${selectedObjectiveId}/plan/approve`, {
+                const response = await fetch(`api/objectives/${selectedObjectiveId}/plan/approve`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json', // Though not strictly necessary for this POST if no body
@@ -904,7 +904,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             sessionStorage.setItem('pendingProjectName', name);
             sessionStorage.setItem('pendingProjectDescription', description);
-            window.location.href = '/auth/facebook';
+            window.location.href = 'auth/facebook';
         });
     }
 
@@ -919,7 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             sessionStorage.setItem('pendingProjectName', name);
             sessionStorage.setItem('pendingProjectDescription', description);
-            window.location.href = '/auth/tiktok';
+            window.location.href = 'auth/tiktok';
         });
     }
 
@@ -933,7 +933,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             sessionStorage.setItem('pendingProjectName', name);
             sessionStorage.setItem('pendingProjectDescription', description);
-            window.location.href = '/auth/linkedin';
+            window.location.href = 'auth/linkedin';
         });
     }
 
@@ -1021,7 +1021,7 @@ document.addEventListener('DOMContentLoaded', () => {
         assetListContainer.innerHTML = '<p>Loading assets...</p>';
 
         try {
-            const response = await fetch(`/api/projects/${projectId}/assets`);
+            const response = await fetch(`api/projects/${projectId}/assets`);
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ error: `Failed to fetch assets: ${response.statusText}` }));
                 throw new Error(errorData.error);
@@ -1077,7 +1077,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (uploadStatusMessage) uploadStatusMessage.textContent = 'Uploading...';
 
             try {
-                const response = await fetch(`/api/projects/${selectedProjectId}/assets/upload`, {
+                const response = await fetch(`api/projects/${selectedProjectId}/assets/upload`, {
                     method: 'POST',
                     body: formData, // FormData sets Content-Type automatically for multipart/form-data
                 });
@@ -1110,7 +1110,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 if (confirm(`Are you sure you want to delete asset ${assetId}? This action cannot be undone.`)) {
                     try {
-                        const response = await fetch(`/api/projects/${selectedProjectId}/assets/${assetId}`, {
+                        const response = await fetch(`api/projects/${selectedProjectId}/assets/${assetId}`, {
                             method: 'DELETE',
                         });
                         if (!response.ok) {
