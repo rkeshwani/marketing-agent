@@ -96,52 +96,111 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- UI Section Management ---
+    // Function to create/manage form toggles
+    function setupFormToggle(formContainerId, headerText, sectionElement) {
+        const formContainer = document.getElementById(formContainerId);
+        if (!formContainer || !sectionElement) { // Ensure sectionElement is also valid
+            // console.warn(`Form container ${formContainerId} or section element not found for toggle setup.`);
+            return;
+        }
+
+        let formToggleHeader = document.getElementById(formContainerId + '-toggle');
+        if (!formToggleHeader) {
+            formToggleHeader = document.createElement('h3');
+            formToggleHeader.id = formContainerId + '-toggle';
+            formToggleHeader.className = 'form-toggle-header';
+            formToggleHeader.textContent = headerText;
+
+            // Insert the header before the form container, within the provided sectionElement
+            sectionElement.insertBefore(formToggleHeader, formContainer);
+
+            formToggleHeader.addEventListener('click', () => {
+                formToggleHeader.classList.toggle('active');
+                formContainer.classList.toggle('active');
+            });
+        }
+    }
+
+
     function showProjectsSection() {
-        projectsSection.style.display = 'block';
-        objectivesSection.style.display = 'none';
-        chatSection.style.display = 'none';
-        if (assetsSection) assetsSection.style.display = 'none'; // Hide assets section
-        if (projectContextModal) projectContextModal.style.display = 'none'; // Hide context modal
+        // Sidebar: projects visible, objectives hidden.
+        if (projectsSection) projectsSection.style.display = 'block';
+        if (objectivesSection) objectivesSection.style.display = 'none';
+
+        // Main Content: chat hidden, assets hidden.
+        if (chatSection) chatSection.style.display = 'none';
+        if (assetsSection) assetsSection.style.display = 'none';
+
+        if (projectContextModal) projectContextModal.style.display = 'none';
+
         selectedProjectId = null;
         selectedObjectiveId = null;
         objectives = [];
         currentChatHistory = [];
+
         clearContainer(objectiveListContainer);
-        clearContainer(chatOutput);
+        clearContainer(chatOutput); // Clear main content chat
+
         if (createObjectiveForm) createObjectiveForm.reset();
-        if (createProjectForm) createProjectForm.reset(); // Also reset project form
-        clearContainer(createProjectForm, '.error-message'); // Clear errors on project form
+        if (createProjectForm) createProjectForm.reset();
+        clearContainer(createProjectForm, '.error-message');
+
+        // Reset display text for headers in other sections
+        if (selectedProjectNameElement) selectedProjectNameElement.textContent = 'Project Name';
+        if (selectedObjectiveTitleElement) selectedObjectiveTitleElement.textContent = 'Objective Title';
+
+        // Setup toggle for the create project form
+        if (projectsSection) {
+            setupFormToggle('create-project-form-container', 'Create New Project', projectsSection);
+        }
     }
 
     function showObjectivesSection() {
-        projectsSection.style.display = 'none';
-        objectivesSection.style.display = 'block';
-        chatSection.style.display = 'none';
-        if (assetsSection) assetsSection.style.display = 'none'; // Hide assets section
+        // Sidebar: projects hidden, objectives visible.
+        if (projectsSection) projectsSection.style.display = 'none';
+        if (objectivesSection) objectivesSection.style.display = 'block';
+
+        // Main Content: chat hidden, assets hidden.
+        if (chatSection) chatSection.style.display = 'none';
+        if (assetsSection) assetsSection.style.display = 'none';
+
         selectedObjectiveId = null;
         currentChatHistory = [];
-        clearContainer(chatOutput);
+        clearContainer(chatOutput); // Clear main content chat
+
         if (createObjectiveForm) createObjectiveForm.reset();
-        clearContainer(createObjectiveForm, '.error-message'); // Clear errors on objective form
+        clearContainer(createObjectiveForm, '.error-message');
+
+        // Reset display text for chat section header
+        if (selectedObjectiveTitleElement) selectedObjectiveTitleElement.textContent = 'Objective Title';
 
         if (selectedProjectId) {
             const currentProject = projects.find(p => p.id === selectedProjectId);
-            selectedProjectNameElement.textContent = currentProject ? currentProject.name : "Selected Project";
+            if (selectedProjectNameElement) selectedProjectNameElement.textContent = currentProject ? currentProject.name : "Selected Project";
             fetchObjectives(selectedProjectId);
         } else {
             displayError("No project selected. Please go back and select a project.", objectiveListContainer, true);
-            showProjectsSection(); // Redirect if no project ID
+            showProjectsSection();
+        }
+        // Setup toggle for the create objective form
+        if (objectivesSection) {
+             setupFormToggle('create-objective-form-container', 'Create New Objective', objectivesSection);
         }
     }
 
     async function showChatSection() {
-        projectsSection.style.display = 'none';
-        objectivesSection.style.display = 'none';
-        chatSection.style.display = 'block';
-        if (assetsSection) assetsSection.style.display = 'none'; // Hide assets section
-        userInputElement.value = ''; // Clear input field
-        clearContainer(chatOutput); // Clear previous chat messages before showing section
-        planDisplaySection.style.display = 'none'; // Initially hide plan
+        // Sidebar: objectivesSection should remain visible (or projectsSection if navigation allows direct to chat).
+        // For now, assume objectivesSection is visible as we came from there.
+        // if (projectsSection) projectsSection.style.display = 'none'; // Or keep projects visible and objectives below?
+        // if (objectivesSection) objectivesSection.style.display = 'block'; // Ensure it's visible
+
+        // Main Content: chat visible, assets hidden.
+        if (chatSection) chatSection.style.display = 'block';
+        if (assetsSection) assetsSection.style.display = 'none';
+
+        userInputElement.value = '';
+        clearContainer(chatOutput);
+        planDisplaySection.style.display = 'none';
         chatInputArea.style.display = 'none'; // Initially hide chat input
 
         if (selectedObjectiveId) {
@@ -390,8 +449,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 descP.textContent = project.description;
                 li.appendChild(descP);
             }
-            li.addEventListener('click', () => {
-                selectedProjectId = project.id;
+            // Main click listener for the project item (for navigation and accordion)
+            li.addEventListener('click', function(event) {
+                // If the click is on a button within the li, do not toggle accordion or navigate.
+                if (event.target.tagName === 'BUTTON' || event.target.closest('button')) {
+                    return;
+                }
+
+                // Toggle accordion for description visibility
+                this.classList.toggle('active'); // 'this' refers to projectLi
+
+                // Navigation logic (original functionality)
+                selectedProjectId = project.id; // 'project' variable from forEach scope
                 showObjectivesSection();
             });
 
@@ -653,12 +722,22 @@ document.addEventListener('DOMContentLoaded', () => {
             li.dataset.objectiveId = objective.id;
             if (objective.brief) {
                 const briefP = document.createElement('p');
-                briefP.classList.add('objective-brief');
+                briefP.classList.add('objective-brief'); // Ensure this class exists for CSS
                 briefP.textContent = objective.brief;
                 li.appendChild(briefP);
             }
-            li.addEventListener('click', () => {
-                selectedObjectiveId = objective.id;
+            // Main click listener for the objective item
+            li.addEventListener('click', function(event) {
+                 // If the click is on a button within the li (if any added in future), handle here
+                if (event.target.tagName === 'BUTTON' || event.target.closest('button')) {
+                    return;
+                }
+
+                // Toggle accordion for brief visibility
+                this.classList.toggle('active'); // 'this' refers to objectiveLi
+
+                // Navigation logic
+                selectedObjectiveId = objective.id; // 'objective' from forEach scope
                 showChatSection();
             });
             ul.appendChild(li);
@@ -946,7 +1025,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Initial Load ---
     if (projectContextModal) projectContextModal.style.display = 'none'; // Ensure modal is hidden initially
-    showProjectsSection();
+
+    // Initial setup for form toggles - Call them once sections are displayed.
+    // showProjectsSection and showObjectivesSection will now handle calling setupFormToggle.
+    showProjectsSection(); // This will also set up the project form toggle initially
     fetchProjects();
 
     // Event listener for closing the context modal (if a close button exists)
@@ -999,17 +1081,25 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Asset Management Functions ---
     function showAssetsSection() {
         if (!assetsSection) return;
-        projectsSection.style.display = 'none';
-        objectivesSection.style.display = 'none';
-        chatSection.style.display = 'none';
-        assetsSection.style.display = 'block';
+
+        // Sidebar: projects visible, objectives hidden (assets are project-level)
+        if (projectsSection) projectsSection.style.display = 'block';
+        if (objectivesSection) objectivesSection.style.display = 'none';
+
+        // Main Content: assets visible, chat hidden.
+        if (chatSection) chatSection.style.display = 'none';
+        if (assetsSection) assetsSection.style.display = 'block';
+
+        // Reset objective specific elements
+        if (selectedObjectiveTitleElement) selectedObjectiveTitleElement.textContent = 'Objective Title';
+
 
         if (selectedProjectId) {
-            // Project name is already set by the 'Manage Assets' button click handler
+            // Project name for assets header is set by the 'Manage Assets' button click in renderProjects
             fetchAndRenderAssets(selectedProjectId);
         } else {
             displayError("No project selected. Please go back and select a project.", assetListContainer, true);
-            showProjectsSection();
+            showProjectsSection(); // Go back to project selection if no project ID
         }
         if (uploadAssetForm) uploadAssetForm.reset();
         if (uploadStatusMessage) uploadStatusMessage.textContent = '';
