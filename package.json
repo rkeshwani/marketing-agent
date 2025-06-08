@@ -13,6 +13,7 @@
     "express": "^5.1.0",
     "express-session": "^1.18.1",
     "googleapis": "^149.0.0",
+    "microsandbox": "^0.1.0",
     "multer": "^2.0.0"
   },
   "devDependencies": {

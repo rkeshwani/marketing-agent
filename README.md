@@ -31,6 +31,24 @@ This project is an AI-powered social media management tool that helps users stre
    ```
    The application should now be running on `http://localhost:3000` (or your configured port).
 
+### Local Development with Microsandbox
+
+For local development, especially when working with features that require a secure execution environment for code or specific tool integrations, we use `microsandbox`.
+
+1.  **Install Microsandbox CLI:**
+    If you don't have it already, install the `microsandbox` command-line tool.
+    ```bash
+    npm install -g microsandbox
+    ```
+    *Note: Depending on your system configuration, you might need to use `sudo` for global installation.*
+
+2.  **Start the Microsandbox Development Server:**
+    To run the local server that simulates the microsandbox environment, navigate to your project's root directory and run:
+    ```bash
+    msb server start --dev
+    ```
+    This will start a local server, typically on a port like `8000`, which your application can then be configured to use for relevant services.
+
 ## How to Use the Application
 
 ### 1. Creating Projects

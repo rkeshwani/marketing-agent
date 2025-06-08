@@ -32,9 +32,6 @@ const config = {
   GOOGLE_ADS_SERVICE_ACCOUNT_KEY_PATH: process.env.GOOGLE_ADS_SERVICE_ACCOUNT_KEY_PATH || '', // e.g., './ga_service_account.json'
   GOOGLE_ADS_LOGIN_CUSTOMER_ID: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || '', // ID of the manager or client account
 
-  // E2B Code Interpreter API Key
-  E2B_API_KEY: process.env.E2B_API_KEY || '',
-
   // LinkedIn App Configuration
   LINKEDIN_APP_ID: process.env.LINKEDIN_APP_ID || '',
   LINKEDIN_APP_SECRET: process.env.LINKEDIN_APP_SECRET || '',
