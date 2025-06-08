@@ -409,5 +409,3 @@ async function execute_post_to_linkedin(params, projectId) {
         return JSON.stringify({ error: `Failed to post to LinkedIn: ${error.message}` });
     }
 }
-
-[end of src/services/toolExecutorService.js]
