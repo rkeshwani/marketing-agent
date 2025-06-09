@@ -230,6 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function fetchObjectivesForProject(projectId, containerElement) {
         containerElement.innerHTML = '<p>Loading objectives...</p>';
+        console.log(`Fetching objectives from URL: /api/projects/${projectId}/objectives`); // Added logging
         try {
             const response = await fetch(`/api/projects/${projectId}/objectives`);
             if (!response.ok) throw new Error(`Failed to fetch objectives: ${response.statusText}`);
@@ -243,8 +244,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
             renderObjectivesInProject(fetchedObjectives, containerElement, projectId);
         } catch (error) {
-            displayError(error.message, containerElement);
-            containerElement.innerHTML = `<p class="error-message">Could not load objectives.</p>`;
+            let userMessage = 'Could not load objectives for this project.';
+            // Check if error.message exists and includes '404', which might be part of response.statusText
+            // Note: `error.status` is not standard on Error objects unless it's a custom error or from a fetch Response object directly.
+            // The `throw new Error(\`Failed to fetch objectives: \${response.statusText}\`)` line makes statusText part of message.
+            if (error.message && error.message.includes('404')) {
+                userMessage = 'Could not load objectives: Project not found or no objectives exist for this project. Please ensure the project is available or try refreshing the project list.';
+            } else if (error.message && error.message.toLowerCase().includes('failed to fetch')) { // Generic network error
+                userMessage = 'Network error: Could not load objectives. Please check your connection.';
+            }
+            // Log the original error for debugging
+            console.error('Original error fetching objectives:', error);
+            displayError(userMessage, containerElement); // Use the more specific message for displayError
+            containerElement.innerHTML = `<p class="error-message">${userMessage}</p>`; // Also update the direct innerHTML
         }
     }
 
