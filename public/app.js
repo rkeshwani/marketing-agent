@@ -553,7 +553,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 gDriveStatus.classList.add('gdrive-connected-status');
                 gDriveStatus.textContent = 'Google Drive Connected';
                 li.appendChild(gDriveStatus);
-            } else {
+            }
+            else {
                 const connectGDriveBtn = document.createElement('button');
                 connectGDriveBtn.textContent = 'Connect Google Drive';
                 connectGDriveBtn.classList.add('connect-gdrive-btn');
@@ -579,9 +580,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Action buttons container
             const actionsDiv = document.createElement('div');
             actionsDiv.classList.add('project-item-actions');
-            if (!project.googleDriveFolderId) { // Only show connect if not already connected
-                 actionsDiv.appendChild(connectGDriveBtn);
-            }
+            // if (!project.googleDriveFolderId) { // Only show connect if not already connected
+            //      actionsDiv.appendChild(connectGDriveBtn);
+            // }
             actionsDiv.appendChild(manageAssetsBtn);
             actionsDiv.appendChild(editContextBtn);
             li.appendChild(actionsDiv);
@@ -782,7 +783,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const formToQuery = contextAnswersForm && contextAnswersForm.contains(contextQuestionsContainer.querySelector('textarea'))
                             ? contextAnswersForm
                             : contextQuestionsContainer;
-        const textareas = formToQuery.querySelectorAll('textarea');
+
 
         textareas.forEach(textarea => {
             const question = textarea.getAttribute('data-question');
