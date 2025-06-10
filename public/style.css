@@ -120,6 +120,73 @@ main {
     content: '-';
 }
 
+/* Styling for the dynamically added objective creation form */
+.create-objective-form-instance {
+    margin-top: 10px;
+    margin-bottom: 10px;
+    padding: 15px; /* Increased padding slightly for better spacing */
+    border: 1px solid #ddd; /* Lighter border */
+    border-radius: 5px;
+    background-color: #f9f9f9;
+}
+
+.create-objective-form-instance h3 { /* Assuming the h3 from template is still relevant */
+    margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 1.2em;
+    color: #333;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+}
+
+.create-objective-form-instance label {
+    display: block;
+    margin-bottom: 6px; /* Consistent with project form */
+    font-weight: bold;
+    font-size: 0.95em; /* Consistent with project form */
+}
+
+.create-objective-form-instance input[type='text'],
+.create-objective-form-instance textarea {
+    width: calc(100% - 22px); /* Consistent with project form */
+    padding: 10px; /* Consistent with project form */
+    margin-bottom: 12px; /* Increased margin-bottom */
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1em; /* Consistent with project form */
+}
+
+.create-objective-form-instance textarea {
+    min-height: 70px; /* Consistent with project form */
+    resize: vertical;
+}
+
+.create-objective-form-instance button[type='submit'] {
+    padding: 8px 15px; /* Slightly smaller padding than global default */
+    margin-right: 5px; /* Added margin to separate from cancel */
+}
+
+.create-objective-form-instance .cancel-objective-form-btn {
+    background-color: #6c757d; /* Grey color */
+    color: #fff;
+    padding: 8px 15px; /* Consistent with submit */
+    border: none; /* Ensure no default border */
+    /* margin-left: 10px; is handled by inline style for now, but class is better */
+}
+.create-objective-form-instance .cancel-objective-form-btn:hover {
+    background-color: #5a6268;
+}
+
+.create-objective-form-instance .form-error-message {
+    color: #dc3545; /* Bootstrap danger color */
+    font-size: 0.9em;
+    margin-top: 8px; /* Increased margin-top */
+    padding: 8px;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    border-radius: 4px;
+}
+
 
 #create-project-form-container { /* #create-objective-form-container is hidden globally */
     display: none;

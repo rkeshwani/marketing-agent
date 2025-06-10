@@ -597,6 +597,14 @@ document.addEventListener('DOMContentLoaded', () => {
             // }
             actionsDiv.appendChild(manageAssetsBtn);
             actionsDiv.appendChild(editContextBtn);
+
+            // Add Objective Button
+            const addObjectiveBtn = document.createElement('button');
+            addObjectiveBtn.textContent = 'Add Objective';
+            addObjectiveBtn.classList.add('add-objective-btn');
+            addObjectiveBtn.dataset.projectId = project.id;
+            actionsDiv.appendChild(addObjectiveBtn);
+
             li.appendChild(actionsDiv);
 
 
@@ -605,7 +613,7 @@ document.addEventListener('DOMContentLoaded', () => {
         projectListContainer.appendChild(ul);
 
         // Delegated event listeners for project list buttons
-        ul.addEventListener('click', function(event) {
+        ul.addEventListener('click', async function(event) { // Made async for handleCreateObjectiveSubmit
             const target = event.target;
             if (target.classList.contains('connect-gdrive-btn')) {
                 event.stopPropagation();
@@ -622,9 +630,130 @@ document.addEventListener('DOMContentLoaded', () => {
                 event.stopPropagation(); // Important to prevent project item's main click
                 const projectId = target.dataset.projectId;
                 startProjectContextWorkflow(projectId);
+            } else if (target.classList.contains('add-objective-btn')) {
+                event.stopPropagation();
+                const projectId = target.dataset.projectId;
+                const projectLi = target.closest('.project-item');
+
+                if (projectLi.querySelector('.create-objective-form-instance')) {
+                    // Form already open for this project, maybe focus it or just return
+                    const existingForm = projectLi.querySelector('.create-objective-form-instance form');
+                    if (existingForm) existingForm.querySelector('#objective-title').focus();
+                    return;
+                }
+
+                const template = document.getElementById('create-objective-form-container');
+                if (!template) {
+                    console.error('Create objective form template not found!');
+                    return;
+                }
+                const clonedFormContainer = template.cloneNode(true);
+                clonedFormContainer.id = `create-objective-form-instance-${projectId}`; // Unique ID for container
+                clonedFormContainer.classList.add('create-objective-form-instance');
+                clonedFormContainer.style.display = 'block'; // Make it visible
+                clonedFormContainer.dataset.projectId = projectId;
+
+                const form = clonedFormContainer.querySelector('form'); // Get the form element within the clone
+                if (form) {
+                    // Optional: give the form itself a unique ID if needed, e.g., form.id = `objective-form-${projectId}`;
+                    // Clear any previous error messages from the template
+                    const errorMsgElement = form.querySelector('.form-error-message');
+                    if (errorMsgElement) errorMsgElement.remove();
+
+                    form.addEventListener('submit', async (e) => {
+                        // Pass projectId to the handler. `this` inside handleCreateObjectiveSubmit will be the form.
+                        await handleCreateObjectiveSubmit(e, projectId);
+                    });
+                }
+
+                const cancelButton = clonedFormContainer.querySelector('.cancel-objective-form-btn');
+                if (cancelButton) {
+                    cancelButton.addEventListener('click', () => {
+                        clonedFormContainer.remove();
+                    });
+                }
+
+                projectLi.appendChild(clonedFormContainer); // Append to the project LI
+                const titleInput = clonedFormContainer.querySelector('#objective-title');
+                if (titleInput) titleInput.focus();
             }
             // The main project item click (for navigation) is handled by the listener on the `li` itself.
         });
+    }
+
+    async function handleCreateObjectiveSubmit(event, projectId) {
+        event.preventDefault();
+        const form = event.target; // The form that was submitted
+        const formContainer = form.parentElement; // The 'create-objective-form-instance' div
+
+        // Clear previous errors within this specific form instance
+        const existingError = form.querySelector('.form-error-message');
+        if (existingError) existingError.remove();
+
+        const titleInput = form.querySelector('#objective-title'); // ID selector should work within the scoped form
+        const briefInput = form.querySelector('#objective-brief');
+
+        const title = titleInput ? titleInput.value.trim() : '';
+        const brief = briefInput ? briefInput.value.trim() : '';
+
+        if (!title) {
+            const errorElement = document.createElement('p');
+            errorElement.className = 'form-error-message error-message';
+            errorElement.textContent = 'Objective title is required.';
+            form.appendChild(errorElement);
+            if (titleInput) titleInput.focus();
+            return;
+        }
+
+        try {
+            const response = await fetch(`/api/projects/${projectId}/objectives`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, brief }),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Failed to create objective. Please try again.' }));
+                throw new Error(errorData.error || `Server error: ${response.status}`);
+            }
+            // const newObjective = await response.json(); // newObjective is returned by server
+
+            form.reset();
+            if (formContainer) formContainer.remove(); // Remove the entire cloned form container
+
+            // Refresh objectives for this project
+            const projectLi = document.querySelector(`.project-item[data-project-id="${projectId}"]`);
+            if (projectLi) {
+                // Ensure the project item is active to show objectives, if not already
+                // projectLi.classList.add('active'); // This might auto-trigger toggleProjectObjectives if its logic depends on class change
+
+                const objectivesContainer = projectLi.querySelector('.nested-objective-list');
+                if (objectivesContainer) {
+                    // If objectives container exists (project was opened), refresh it
+                    await fetchObjectivesForProject(projectId, objectivesContainer);
+                } else {
+                    // If objectives container doesn't exist (project was not opened before adding objective),
+                    // we might need to explicitly open it.
+                    // Calling toggleProjectObjectives will create the container and fetch.
+                    // Ensure it's marked as active before calling, so toggle works as expected (to open).
+                    if (!projectLi.classList.contains('active')) {
+                         projectLi.classList.add('active'); // Mark active first
+                         await toggleProjectObjectives(projectId, projectLi); // This will create container & fetch
+                    } else {
+                        // If it was already active, but container somehow missing (unlikely), still call toggle.
+                        await toggleProjectObjectives(projectId, projectLi);
+                    }
+                }
+            }
+        } catch (error) {
+            const errorElement = form.querySelector('.form-error-message') || document.createElement('p');
+            errorElement.className = 'form-error-message error-message';
+            errorElement.textContent = error.message;
+            if (!form.querySelector('.form-error-message')) {
+                form.appendChild(errorElement);
+            }
+            if (titleInput) titleInput.focus();
+        }
     }
 
     async function handleCreateProjectSubmit(event) {
