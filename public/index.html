@@ -54,20 +54,6 @@
                             <!-- Objectives will be listed here by app.js -->
                             <p>Loading objectives...</p>
                         </div>
-                        <div id="create-objective-form-container">
-                            <h3>Create New Objective</h3>
-                            <form id="create-objective-form">
-                                <div>
-                                    <label for="objective-title">Objective Title:</label>
-                                    <input type="text" id="objective-title" required>
-                                </div>
-                                <div>
-                                    <label for="objective-brief">Brief/Description:</label>
-                                    <textarea id="objective-brief"></textarea>
-                                </div>
-                                <button type="submit">Create Objective</button>
-                            </form>
-                        </div>
                     </div>
                 </aside>
 
@@ -148,5 +134,20 @@
         </footer>
     </div>
     <script src="app.js"></script>
+    <div id="create-objective-form-container" style="display: none;">
+        <h3>Create New Objective</h3>
+        <form id="create-objective-form">
+            <div>
+                <label for="objective-title">Objective Title:</label>
+                <input type="text" id="objective-title" required>
+            </div>
+            <div>
+                <label for="objective-brief">Brief/Description:</label>
+                <textarea id="objective-brief"></textarea>
+            </div>
+            <button type="submit">Create Objective</button>
+            <button type="button" class="cancel-objective-form-btn" style="margin-left: 10px;">Cancel</button>
+        </form>
+    </div>
 </body>
 </html>
