@@ -232,7 +232,7 @@ document.addEventListener('DOMContentLoaded', () => {
         containerElement.innerHTML = '<p>Loading objectives...</p>';
         console.log(`Fetching objectives from URL: /api/projects/${projectId}/objectives`); // Added logging
         try {
-            const response = await fetch(`/api/projects/${projectId}/objectives`);
+            const response = await fetch(`api/projects/${projectId}/objectives`);
             if (!response.ok) throw new Error(`Failed to fetch objectives: ${response.statusText}`);
             const fetchedObjectives = await response.json();
 
@@ -706,7 +706,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            const response = await fetch(`/api/projects/${projectId}/objectives`, {
+            const response = await fetch(`api/projects/${projectId}/objectives`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ title, brief }),
