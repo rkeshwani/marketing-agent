@@ -1,141 +1,349 @@
 /* public/style.css */
-body {
-    font-family: sans-serif;
+html, body {
+    height: 100%;
     margin: 0;
+    font-family: sans-serif;
+    line-height: 1.6;
     background-color: #f4f4f4;
     color: #333;
-    line-height: 1.6;
 }
 
 #app-container {
-    max-width: 1000px;
-    margin: auto;
-    overflow: hidden;
-    padding: 0 20px 20px 20px;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: #f4f4f4;
 }
 
 header {
     background: #333;
     color: #fff;
-    padding: 1rem 0;
+    padding: 1rem 20px;
     text-align: center;
-    margin-bottom: 20px;
+    flex-shrink: 0;
 }
 
 header h1 {
     margin: 0;
+    font-size: 1.8em;
 }
 
 main {
-    background: #fff;
+    flex-grow: 1;
+    display: flex;
+}
+
+#app-layout {
+    display: flex;
+    flex-grow: 1;
+    width: 100%;
+    overflow: hidden;
+}
+
+#sidebar {
+    flex: 0 0 300px;
+    background-color: #e9ecef;
     padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    overflow-y: auto;
+    border-left: 1px solid #ccc;
+    order: 2;
 }
 
-/* Project and Objective Sections */
-#projects-section, #objectives-section, #chat-section {
-    margin-bottom: 30px;
-    padding: 15px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
+#sidebar h2 {
+    color: #333;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 10px;
+    margin-top: 0;
+    font-size: 1.3em;
 }
 
-#projects-section h2, #objectives-section h2, #chat-section h2 {
+#sidebar h3 {
+    font-size: 1.1em;
+    color: #555;
+    margin-top: 15px;
+    margin-bottom: 10px;
+}
+
+#main-content {
+    flex-grow: 1;
+    padding: 20px;
+    overflow-y: auto;
+    background-color: #fff;
+    order: 1;
+}
+
+/* Hide the old objectives section and its form container */
+#objectives-section, #create-objective-form-container {
+    display: none !important;
+}
+
+
+#projects-section, #chat-section, #assets-section { /* Removed #objectives-section from this rule */
+    margin-bottom: 25px;
+    padding: 0;
+    border: none;
+}
+
+#projects-section h2, #chat-section h2, #assets-section h3, #assets-section h4 { /* Removed #objectives-section h2 */
     color: #333;
     border-bottom: 1px solid #eee;
     padding-bottom: 10px;
     margin-top: 0;
 }
 
-#create-project-form-container, #create-objective-form-container {
+/* Form Toggle Headers */
+.form-toggle-header {
+    cursor: pointer;
+    background-color: #dde2e6;
+    padding: 10px 15px;
     margin-top: 20px;
+    margin-bottom: 0;
+    border: 1px solid #c5cdd3;
+    border-radius: 4px 4px 0 0;
+    font-size: 1.1em;
+    font-weight: bold;
+    color: #333;
+    display: flex;
+    align-items: center;
+}
+
+.form-toggle-header::before {
+    content: '+';
+    margin-right: 10px;
+    font-weight: bold;
+    display: inline-block;
+    color: #007bff;
+    font-size: 1.2em;
+}
+
+.form-toggle-header.active::before {
+    content: '-';
+}
+
+
+#create-project-form-container { /* #create-objective-form-container is hidden globally */
+    display: none;
     padding: 15px;
-    background-color: #f9f9f9;
-    border-radius: 5px;
+    background-color: #f8f9fa;
+    border: 1px solid #d1d9e0;
+    border-top: none;
+    border-radius: 0 0 4px 4px;
+    margin-top: 0;
+    margin-bottom: 15px;
 }
 
-#create-project-form div, #create-objective-form div {
-    margin-bottom: 10px;
-}
-
-#create-project-form label, #create-objective-form label {
+#create-project-form-container.active {
     display: block;
-    margin-bottom: 5px;
+}
+
+
+#create-project-form div { /* Removed #create-objective-form div */
+    margin-bottom: 12px;
+}
+
+#create-project-form label, #upload-asset-form label { /* Removed #create-objective-form label */
+    display: block;
+    margin-bottom: 6px;
+    font-weight: bold;
+    font-size: 0.95em;
 }
 
 #create-project-form input[type="text"],
 #create-project-form textarea,
-#create-objective-form input[type="text"],
-#create-objective-form textarea {
-    width: 95%;
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-}
-
-#create-project-form textarea, #create-objective-form textarea {
-    min-height: 60px;
-    resize: vertical;
-}
-
-button {
-    background: #5cb85c;
-    color: white;
-    border: 0;
-    padding: 10px 15px;
-    cursor: pointer;
+/* Removed #create-objective-form input & textarea */
+#upload-asset-form input[type="file"] {
+    width: calc(100% - 22px);
+    padding: 10px;
+    border: 1px solid #ccc;
     border-radius: 4px;
     font-size: 1em;
 }
 
-button:hover {
-    background: #4cae4c;
+#create-project-form textarea { /* Removed #create-objective-form textarea */
+    min-height: 70px;
+    resize: vertical;
 }
 
-.project-list, .objective-list {
+button, input[type="submit"] {
+    background: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 18px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 1em;
+    transition: background-color 0.2s ease-in-out;
+    display: inline-block;
+    text-align: center;
+    margin-top: 5px;
+    margin-bottom: 5px;
+}
+
+button:hover, input[type="submit"]:hover {
+    background: #0056b3;
+}
+
+#connect-facebook-btn { background: #3b5998; }
+#connect-facebook-btn:hover { background: #2f477a; }
+#connect-tiktok-btn { background: #000; color: #fff; }
+#connect-tiktok-btn:hover { background: #333; }
+#connect-linkedin-btn { background: #0077b5; }
+#connect-linkedin-btn:hover { background: #005582; }
+
+.edit-context-btn {
+    background-color: #6c757d;
+    padding: 6px 12px;
+    font-size: 0.9em;
+    margin-left: 8px;
+}
+.edit-context-btn:hover {
+    background-color: #5a6268;
+}
+
+
+#back-to-objectives-button, #back-to-projects-from-assets-button { /* Removed #back-to-projects-button */
+    background-color: #6c757d;
+    margin-bottom: 15px;
+}
+#back-to-objectives-button:hover, #back-to-projects-from-assets-button:hover { /* Removed #back-to-projects-button:hover */
+    background-color: #545b62;
+}
+
+.project-list, #asset-list-container ul { /* Removed .objective-list (global) */
     list-style: none;
     padding: 0;
 }
 
-.project-item, .objective-item {
+.project-item { /* .objective-item styling will be specific for nested ones */
     background: #fff;
-    border: 1px solid #eee;
-    padding: 10px 15px;
-    margin-bottom: 8px;
+    border: 1px solid #ddd;
+    padding: 12px 18px;
+    margin-bottom: 10px;
     border-radius: 4px;
     cursor: pointer;
+    transition: background-color 0.2s ease;
+    position: relative;
 }
 
-.project-item:hover, .objective-item:hover {
-    background: #f0f0f0;
+.project-item-actions {
+    margin-top: 10px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
-.project-description {
+
+.project-item:hover { /* Removed .objective-item:hover (global) */
+    background: #f5f5f5;
+}
+
+.project-item::before { /* Removed .objective-item::before (global) */
+    content: '+';
+    margin-right: 10px;
+    font-weight: bold;
+    display: inline-block;
+    color: #007bff;
+    font-size: 1.1em;
+    transition: transform 0.2s ease-in-out;
+}
+
+.project-item.active::before { /* Removed .objective-item.active::before (global) */
+    content: '-';
+}
+
+.project-description,
+.project-item .nested-objective-list {
+    display: none;
+    margin-top: 10px;
+    padding-left: 20px; /* Indent project description and nested list container */
+}
+
+.project-item.active .project-description,
+.project-item.active .nested-objective-list {
+    display: block;
+}
+
+.nested-objective-list {
+    list-style: none;
+    padding-left: 15px; /* Further indent nested objectives relative to project description padding */
+    margin-top: 10px;
+    border-top: 1px dashed #ddd; /* Separator from project description */
+    padding-top: 10px;
+}
+
+.nested-objective-list .objective-item {
+    background-color: #f9f9f9; /* Slightly different background for nested items */
+    border: 1px solid #eee;
+    padding: 8px 12px; /* Smaller padding for nested items */
+    margin-bottom: 6px;
+    border-radius: 3px;
+    font-size: 0.95em;
+    cursor: pointer;
+}
+.nested-objective-list .objective-item:hover {
+    background-color: #f0f0f0;
+}
+
+.nested-objective-list .objective-item.active-objective {
+    background-color: #ddeeff; /* Highlight for active objective */
+    border-color: #aaccee;
+    font-weight: bold; /* Make active objective text bold */
+}
+
+.nested-objective-list .objective-item .objective-brief { /* Styling for brief if shown */
     font-size: 0.9em;
     color: #666;
-    margin-top: 5px;
+    margin-top: 4px;
+    padding-left: 10px; /* Indent brief under objective title */
+    display: block; /* Make brief visible by default in nested view */
 }
+
+
+.asset-item {
+    background: #fff;
+    border: 1px solid #ddd;
+    padding: 12px 18px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+}
+.asset-item:hover {
+    background: #f5f5f5;
+}
+
 
 .error-message {
-    color: red;
+    color: #dc3545;
     font-weight: bold;
     margin-top: 10px;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    padding: 10px;
+    border-radius: 4px;
 }
 
-/* Chat Area Styling (from original, slightly adapted) */
+#chat-section {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+#chat-section > h2 { flex-shrink: 0; }
+#chat-section > button { flex-shrink: 0; align-self: flex-start; }
+
+
 #chat-container {
     display: flex;
     flex-direction: column;
-    height: 400px; /* Or adjust as needed */
+    flex-grow: 1;
     border: 1px solid #ccc;
     border-radius: 5px;
     overflow: hidden;
+    background-color: #fff;
 }
 
 #chat-output {
     flex-grow: 1;
-    padding: 10px;
+    padding: 15px;
     overflow-y: auto;
     background-color: #f9f9f9;
     display: flex;
@@ -143,158 +351,321 @@ button:hover {
 }
 
 .message {
-    padding: 8px 12px;
-    margin-bottom: 8px;
-    border-radius: 15px;
-    max-width: 70%;
+    padding: 10px 15px;
+    margin-bottom: 10px;
+    border-radius: 18px;
+    max-width: 75%;
     word-wrap: break-word;
+    line-height: 1.4;
 }
 
 .user-message {
     background-color: #007bff;
     color: white;
     align-self: flex-end;
-    border-bottom-right-radius: 5px;
+    border-bottom-right-radius: 6px;
 }
 
 .agent-message {
     background-color: #e9ecef;
     color: #333;
     align-self: flex-start;
-    border-bottom-left-radius: 5px;
+    border-bottom-left-radius: 6px;
 }
 
 #chat-input-area {
     display: flex;
-    padding: 10px;
+    padding: 12px;
     border-top: 1px solid #ccc;
-    background-color: #fff;
+    background-color: #f0f0f0;
+    flex-shrink: 0;
 }
 
 #user-input {
     flex-grow: 1;
-    padding: 10px;
+    padding: 12px 18px;
     border: 1px solid #ddd;
-    border-radius: 20px;
-    margin-right: 10px;
+    border-radius: 25px;
+    margin-right: 12px;
+    font-size: 1em;
 }
 
-#send-button { /* Re-style send button if needed, or ensure general button style applies */
+#send-button {
     background: #007bff;
     min-width: 80px;
+    padding: 12px 20px;
 }
 #send-button:hover {
     background: #0056b3;
 }
 
+#plan-display-section {
+    padding: 15px;
+    border: 1px solid #007bff30;
+    background-color: #f0f8ff1c;
+    border-radius: 5px;
+    margin-bottom: 20px;
+}
+#plan-display-section h3 {
+    color: #0056b3;
+    margin-top: 0;
+}
+#plan-steps-list, #plan-questions-list {
+    padding-left: 20px;
+}
+#plan-steps-list li, #plan-questions-list li {
+    margin-bottom: 8px;
+}
 
 footer {
     text-align: center;
-    padding: 20px 0;
-    margin-top: 30px;
-    color: #777;
+    padding: 20px;
+    margin-top: auto;
+    background: #333;
+    color: #fff;
     font-size: 0.9em;
+    flex-shrink: 0;
 }
 
-/* Notification Styles */
 #user-notification {
     padding: 15px;
-    margin-bottom: 20px; /* Space between notification and header/content below */
+    margin-bottom: 20px;
     border-radius: 5px;
     text-align: center;
     font-weight: bold;
     opacity: 1;
-    transition: opacity 0.5s ease-in-out; /* For fade out */
+    transition: opacity 0.5s ease-in-out;
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2000;
+    min-width: 300px;
 }
 
 .notification-success {
-    background-color: #d4edda; /* Light green */
-    color: #155724; /* Dark green */
+    background-color: #d4edda;
+    color: #155724;
     border: 1px solid #c3e6cb;
 }
 
 .notification-error {
-    background-color: #f8d7da; /* Light red */
-    color: #721c24; /* Dark red */
+    background-color: #f8d7da;
+    color: #721c24;
     border: 1px solid #f5c6cb;
 }
 
-/* Project Context Modal Styles */
 .modal {
-    display: none; /* Hidden by default */
-    position: fixed; /* Stay in place */
-    z-index: 1000; /* Sit on top */
+    display: none;
+    position: fixed;
+    z-index: 1000;
     left: 0;
     top: 0;
-    width: 100%; /* Full width */
-    height: 100%; /* Full height */
-    overflow: auto; /* Enable scroll if needed */
-    background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.5);
 }
 
 .modal-content {
     background-color: #fefefe;
-    margin: 10% auto; /* 10% from the top and centered */
-    padding: 25px;
-    border: 1px solid #888;
-    width: 60%; /* Could be more responsive */
+    margin: 10vh auto;
+    padding: 20px 30px;
+    border: 1px solid #bbb;
+    width: 90%;
+    max-width: 600px;
     border-radius: 8px;
-    box-shadow: 0 4px 8px 0 rgba(0,0,0,0.2), 0 6px 20px 0 rgba(0,0,0,0.19);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
     position: relative;
 }
 
+.modal-content h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 1.5em;
+}
+
+
 .close-button {
-    color: #aaa;
-    float: right;
-    font-size: 28px;
+    color: #888;
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 32px;
     font-weight: bold;
 }
 
 .close-button:hover,
 .close-button:focus {
-    color: black;
+    color: #333;
     text-decoration: none;
     cursor: pointer;
 }
 
-#contextQuestionsContainer .context-question-item {
-    margin-bottom: 15px;
+#context-questions-container .context-question-item {
+    margin-bottom: 20px;
 }
 
-#contextQuestionsContainer label {
+#context-questions-container label {
     display: block;
-    margin-bottom: 5px;
+    margin-bottom: 10px;
     font-weight: bold;
-    color: #555;
+    color: #333;
+    font-size: 1.05em;
 }
 
-#contextQuestionsContainer textarea {
-    width: 98%; /* Adjusted for padding within modal-content */
+#context-questions-container textarea {
+    width: calc(100% - 22px);
     padding: 10px;
     border: 1px solid #ccc;
     border-radius: 4px;
-    min-height: 60px;
-    font-family: sans-serif; /* Inherit body font */
+    min-height: 80px;
+    font-family: inherit;
     font-size: 1em;
     resize: vertical;
+    background-color: #fff;
 }
 
-#submitContextAnswersBtn {
-    background-color: #007bff; /* Blue, consistent with send */
+#submit-context-answers-btn {
+    background-color: #007bff;
     color: white;
-    padding: 10px 20px;
+    padding: 12px 22px;
     border: none;
     border-radius: 5px;
     cursor: pointer;
-    font-size: 1em;
-    margin-top: 10px; /* Add some space above the button */
+    font-size: 1.05em;
+    margin-top: 10px;
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
 }
 
-#submitContextAnswersBtn:hover {
+#submit-context-answers-btn:hover {
     background-color: #0056b3;
 }
 
-#submitContextAnswersBtn:disabled {
+#submit-context-answers-btn:disabled {
     background-color: #ccc;
     cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+    #app-layout {
+        flex-direction: column;
+    }
+
+    #sidebar {
+        width: 100%;
+        flex-basis: auto;
+        max-height: 50vh;
+        border-left: none;
+        border-bottom: 1px solid #ccc;
+        padding: 15px;
+        order: 1;
+    }
+
+    #main-content {
+        width: 100%;
+        padding: 15px;
+        order: 2;
+    }
+
+    header {
+        padding: 0.8rem 15px;
+    }
+    header h1 {
+        font-size: 1.5em;
+    }
+
+    button, input[type="submit"], #user-input {
+        padding: 12px 15px;
+        font-size: 1em;
+    }
+    .edit-context-btn {
+        padding: 8px 12px;
+        font-size: 0.9em;
+    }
+
+
+    #user-input {
+        padding: 12px 15px;
+    }
+
+    #send-button {
+        padding: 12px 15px;
+    }
+
+    .message {
+        max-width: 85%;
+    }
+
+    .modal-content {
+        width: 90%;
+        margin: 5vh auto;
+        padding: 20px;
+    }
+    .modal-content h2 {
+        font-size: 1.3em;
+        margin-bottom: 15px;
+    }
+
+
+    #user-notification {
+        width: 90%;
+        top: 60px;
+        font-size: 0.9em;
+    }
+    .form-toggle-header {
+        font-size: 1em;
+        padding: 8px 12px;
+    }
+}
+
+@media (max-width: 480px) {
+    #sidebar {
+        max-height: 45vh;
+    }
+
+    #sidebar h2 { font-size: 1.2em; }
+    #main-content h2 { font-size: 1.2em; }
+
+    #create-project-form input[type="text"],
+    #create-project-form textarea,
+    /* #create-objective-form input & textarea removed */
+    #upload-asset-form input[type="file"] {
+        width: calc(100% - 20px);
+    }
+
+    footer {
+        padding: 15px;
+        font-size: 0.85em;
+    }
+    .project-item::before, /* .objective-item::before removed (global) */
+    .form-toggle-header::before {
+        font-size: 1em;
+        margin-right: 8px;
+    }
+    .project-description,
+    .project-item .nested-objective-list .objective-item .objective-brief { /* More specific for brief */
+        padding-left: 20px;
+    }
+    .nested-objective-list {
+        padding-left: 10px; /* Adjust nested list padding for smaller screens */
+    }
+    .nested-objective-list .objective-item {
+        font-size: 0.9em; /* Adjust nested objective item font size */
+    }
+
+
+    #context-questions-container label {
+        font-size: 1em;
+    }
+    #context-questions-container textarea {
+        min-height: 60px;
+    }
+    #submit-context-answers-btn {
+        font-size: 1em;
+        padding: 10px 18px;
+    }
+
 }

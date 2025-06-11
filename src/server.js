@@ -1037,15 +1037,23 @@ app.post('/api/projects/:projectId/objectives', (req, res) => {
 // GET /api/projects/:projectId/objectives - Get all objectives for a project
 app.get('/api/projects/:projectId/objectives', (req, res) => {
     const { projectId } = req.params;
+
+    // Added logging
+    console.log(`[SERVER LOG] Received request for objectives for projectId: ${projectId}`);
+    const currentProjectIds = dataStore.getAllProjects().map(p => p.id);
+    console.log(`[SERVER LOG] Project IDs currently in dataStore: ${JSON.stringify(currentProjectIds)}`);
+
     const project = dataStore.findProjectById(projectId);
     if (!project) {
+        console.log(`[SERVER LOG] Project with ID ${projectId} NOT FOUND in dataStore.`); // Added for clarity
         return res.status(404).json({ error: 'Project not found' });
     }
     try {
+        console.log(`[SERVER LOG] Project with ID ${projectId} found. Fetching objectives.`); // Added for clarity
         const objectives = dataStore.getObjectivesByProjectId(projectId);
         res.status(200).json(objectives);
-    } catch (error) { // Fixed: Added opening curly brace
-        console.error(`Error getting objectives for project ${projectId}:`, error);
+    } catch (error) {
+        console.error(`[SERVER LOG] Error getting objectives for project ${projectId}:`, error);
         res.status(500).json({ error: 'Failed to retrieve objectives' });
     }
 });
