@@ -1,11 +1,101 @@
 // src/dataStore.js
-const projects = [];
-const objectives = [];
+const fs = require('fs');
+const path = require('path');
+const Project = require('./models/Project');
+const Objective = require('./models/Objective');
+
+const DATA_FILE_PATH = path.join(__dirname, '..', 'data.json');
+
+let projects = [];
+let objectives = [];
+
+// Function to load data from JSON file
+function loadDataFromFile() {
+  try {
+    if (fs.existsSync(DATA_FILE_PATH)) {
+      const jsonData = fs.readFileSync(DATA_FILE_PATH, 'utf8');
+      const data = JSON.parse(jsonData);
+
+      const loadedProjects = (data.projects || []).map(p => {
+        const project = new Project(p.name, p.description);
+        // Assign all other properties from the loaded object to the instance
+        // This ensures properties like id, createdAt, updatedAt, and any custom fields are restored.
+        for (const key in p) {
+          if (key !== 'name' && key !== 'description') { // Constructor handles these
+            project[key] = p[key];
+          }
+        }
+        // Ensure dates are Date objects if they are stored as strings
+        if (p.createdAt) project.createdAt = new Date(p.createdAt);
+        if (p.updatedAt) project.updatedAt = new Date(p.updatedAt);
+        return project;
+      });
+
+      const loadedObjectives = (data.objectives || []).map(o => {
+        // Corrected constructor arguments: projectId, title, brief
+        const objective = new Objective(o.projectId, o.title, o.brief);
+        // Assign all other properties, ensuring constructor-set ones are not overwritten from plain obj unless intended
+        // and 'plan' is handled separately if it's meant to be fully replaced from JSON.
+        for (const key in o) {
+          if (!['projectId', 'title', 'brief', 'id', 'createdAt', 'updatedAt', 'chatHistory', 'plan'].includes(key)) {
+            objective[key] = o[key];
+          }
+        }
+        // Restore plan if it exists in the JSON object and if it's more than default
+        if (o.plan) {
+            objective.plan = { ...objective.plan, ...o.plan }; // Merge or overwrite as needed
+        }
+        // id, createdAt, updatedAt are set by constructor or should be directly assigned if overriding constructor
+        if(o.id) objective.id = o.id; // allow JSON to override constructor ID if present
+        if(o.createdAt) objective.createdAt = new Date(o.createdAt); // ensure Date object
+        if(o.updatedAt) objective.updatedAt = new Date(o.updatedAt); // ensure Date object
+        // Ensure dates are Date objects
+        if (o.createdAt) objective.createdAt = new Date(o.createdAt);
+        if (o.updatedAt) objective.updatedAt = new Date(o.updatedAt);
+        // Reconstruct chatHistory messages if necessary, assuming they are plain objects
+        if (o.chatHistory) {
+            objective.chatHistory = o.chatHistory.map(message => ({
+                ...message,
+                timestamp: new Date(message.timestamp)
+            }));
+        }
+        return objective;
+      });
+
+      projects = loadedProjects;
+      objectives = loadedObjectives;
+      console.log('Data loaded and instances reconstructed from', DATA_FILE_PATH);
+    } else {
+      console.log('No data file found. Initializing with empty data and creating file.');
+      projects = [];
+      objectives = [];
+      saveDataToFile(); // Create data.json with empty arrays if it doesn't exist
+    }
+  } catch (error) {
+    console.error('Error loading data from file:', error);
+    projects = [];
+    objectives = [];
+  }
+}
+
+// Function to save data to JSON file
+function saveDataToFile() {
+  try {
+    const data = { projects, objectives };
+    fs.writeFileSync(DATA_FILE_PATH, JSON.stringify(data, null, 2), 'utf8');
+    console.log('Data saved to', DATA_FILE_PATH);
+  } catch (error) {
+    console.error('Error saving data to file:', error);
+  }
+}
+
+// Load data on startup
+loadDataFromFile();
 
 // --- Project Functions ---
 function addProject(projectData) {
-    // Assuming projectData contains name, description, and optionally the new fields
-    const newProject = new (require('./models/Project'))(projectData.name, projectData.description);
+    // Project class is already required at the top
+    const newProject = new Project(projectData.name, projectData.description);
 
     // Assign new fields if they are provided in projectData
     newProject.facebookUserAccessToken = projectData.facebookUserAccessToken || null;
@@ -33,6 +123,7 @@ function addProject(projectData) {
     newProject.assets = projectData.assets || [];
 
     projects.push(newProject);
+    saveDataToFile(); // Save after adding a new project
     return newProject;
 }
 
@@ -78,6 +169,7 @@ function updateProjectById(projectId, updateData) {
         if (updateData.assets !== undefined) project.assets = updateData.assets;
 
         project.updatedAt = new Date();
+        saveDataToFile(); // Save after updating a project
         return project;
     }
     return null;
@@ -88,17 +180,37 @@ function deleteProjectById(projectId) {
     if (index !== -1) {
         projects.splice(index, 1);
         // Also delete associated objectives
+        // Note: deleteObjectiveById will call saveDataToFile, so multiple saves will occur.
+        // This is acceptable for now, but could be optimized later if performance becomes an issue.
         const projectObjectives = objectives.filter(o => o.projectId === projectId);
-        projectObjectives.forEach(o => deleteObjectiveById(o.id)); // Assumes deleteObjectiveById exists
+        projectObjectives.forEach(o => deleteObjectiveById(o.id)); // This will trigger saves
+        saveDataToFile(); // Save after deleting a project (and its objectives)
         return true;
     }
     return false;
 }
 
 // --- Objective Functions ---
-function addObjective(objective) {
-    objectives.push(objective);
-    return objective;
+function addObjective(objectiveData, projectId) {
+    // Objective class is already required at the top
+    const project = findProjectById(projectId);
+    if (!project) {
+        console.error("Project not found for adding objective");
+        return null; // Or throw an error
+    }
+    // Corrected constructor arguments: projectId, title, brief
+    const newObjective = new Objective(projectId, objectiveData.title, objectiveData.brief);
+
+    // If plan structure is provided in objectiveData and needs to overwrite/extend default
+    if (objectiveData.plan) {
+        newObjective.plan = { ...newObjective.plan, ...objectiveData.plan };
+    }
+    // Note: id, createdAt, updatedAt are handled by the Objective constructor.
+    // Any other specific properties from objectiveData should be assigned here if not covered by constructor.
+
+    objectives.push(newObjective);
+    saveDataToFile(); // Save after adding a new objective
+    return newObjective;
 }
 
 function getObjectivesByProjectId(projectId) {
@@ -118,6 +230,7 @@ function updateObjectiveById(objectiveId, title, brief, plan) {
             objective.plan = plan;
         }
         objective.updatedAt = new Date();
+        saveDataToFile(); // Save after updating an objective
         return objective;
     }
     return null;
@@ -127,12 +240,15 @@ function deleteObjectiveById(objectiveId) {
     const index = objectives.findIndex(o => o.id === objectiveId);
     if (index !== -1) {
         objectives.splice(index, 1);
+        saveDataToFile(); // Save after deleting an objective
         return true;
     }
     return false;
 }
 
 // Function to add a message to an objective's chat history
+// Note: Chat history saving is complex with current setup.
+// We might need to call saveDataToFile() after this if chat history is critical to persist.
 function addMessageToObjectiveChat(objectiveId, sender, text) {
     const objective = findObjectiveById(objectiveId);
     if (objective) {
@@ -146,6 +262,7 @@ function addMessageToObjectiveChat(objectiveId, sender, text) {
         };
         objective.chatHistory.push(message);
         objective.updatedAt = new Date();
+        saveDataToFile(); // Save after adding a message to chat history
         return message;
     }
     return null;
@@ -158,10 +275,12 @@ module.exports = {
     findProjectById,
     updateProjectById,
     deleteProjectById,
-    addObjective,
+    // addObjective, // Original addObjective might be removed or renamed if new signature is preferred
+    addObjective, // Keep new addObjective or decide on a naming convention
     getObjectivesByProjectId,
     findObjectiveById,
     updateObjectiveById,
     deleteObjectiveById,
-    addMessageToObjectiveChat
+    addMessageToObjectiveChat,
+    saveDataToFile // Exporting for potential external use, though primarily internal
 };
