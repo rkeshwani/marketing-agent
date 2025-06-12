@@ -56,10 +56,20 @@ async function executeTool(toolName, toolArguments, projectId) {
             const geminiPromptForConfig = `Based on the project context: "${projectContext}", and a request to create a Google Ads campaign (name suggestion: "${toolArguments.campaign_name_suggestion}", type suggestion: "${toolArguments.campaign_type_suggestion}"), generate a detailed JSON configuration object for the Google Ads API Campaign resource. Identify any critical missing information. For budget, explicitly state 'BUDGET_NEEDED'.`;
 
             // Pass objective.chatHistory for context, projectAssets is empty for this type of call
-            const campaignConfigOrClarification = await geminiService.fetchGeminiResponse(geminiPromptForConfig, objective.chatHistory, []);
+            let campaignConfigOrClarification;
+            try {
+                campaignConfigOrClarification = await geminiService.fetchGeminiResponse(geminiPromptForConfig, objective.chatHistory, []);
+            } catch (error) {
+                console.error("Agent: Error fetching campaign config from Gemini:", error);
+                return JSON.stringify({ error: "Failed to get campaign configuration details from AI: " + error.message });
+            }
 
             if (typeof campaignConfigOrClarification === 'object' && campaignConfigOrClarification.tool_call) {
                  return JSON.stringify({ error: "Gemini unexpectedly tried to call another tool while generating campaign config." });
+            }
+            if (typeof campaignConfigOrClarification !== 'string') {
+                console.error("Agent: Unexpected response type from Gemini for campaign config. Expected string, got:", typeof campaignConfigOrClarification);
+                return JSON.stringify({ error: "Received unexpected configuration format from AI." });
             }
 
             if (campaignConfigOrClarification.includes("BUDGET_NEEDED")) {
@@ -103,10 +113,20 @@ async function executeTool(toolName, toolArguments, projectId) {
 
             const geminiPromptForAdGroupConfig = `Based on project context: "${projectContext}", for Google Ads campaign ID "${campaignId}", generate a detailed JSON configuration for an Ad Group (name suggestion: "${toolArguments.ad_group_name_suggestion}"). Include relevant keywords and bids if appropriate from the context.`;
 
-            const adGroupConfigString = await geminiService.fetchGeminiResponse(geminiPromptForAdGroupConfig, objective.chatHistory, []);
+            let adGroupConfigString;
+            try {
+                adGroupConfigString = await geminiService.fetchGeminiResponse(geminiPromptForAdGroupConfig, objective.chatHistory, []);
+            } catch (error) {
+                console.error("Agent: Error fetching ad group config from Gemini:", error);
+                return JSON.stringify({ error: "Failed to get ad group configuration details from AI: " + error.message });
+            }
 
             if (typeof adGroupConfigString === 'object' && adGroupConfigString.tool_call) {
                  return JSON.stringify({ error: "Gemini unexpectedly tried to call another tool while generating ad group config." });
+            }
+            if (typeof adGroupConfigString !== 'string') {
+                console.error("Agent: Unexpected response type from Gemini for ad group config. Expected string, got:", typeof adGroupConfigString);
+                return JSON.stringify({ error: "Received unexpected ad group configuration format from AI." });
             }
 
             let parsedAdGroupConfig;
@@ -126,10 +146,20 @@ async function executeTool(toolName, toolArguments, projectId) {
 
             const geminiPromptForAdConfig = `Based on project context: "${projectContext}", for Google Ads ad group ID "${adGroupId}", generate a detailed JSON configuration for an Ad (type suggestion: "${toolArguments.ad_type_suggestion}"). Include headlines, descriptions, and final URLs if appropriate from the context.`;
 
-            const adConfigString = await geminiService.fetchGeminiResponse(geminiPromptForAdConfig, objective.chatHistory, []);
+            let adConfigString;
+            try {
+                adConfigString = await geminiService.fetchGeminiResponse(geminiPromptForAdConfig, objective.chatHistory, []);
+            } catch (error) {
+                console.error("Agent: Error fetching ad config from Gemini:", error);
+                return JSON.stringify({ error: "Failed to get ad configuration details from AI: " + error.message });
+            }
 
             if (typeof adConfigString === 'object' && adConfigString.tool_call) {
                  return JSON.stringify({ error: "Gemini unexpectedly tried to call another tool while generating ad config." });
+            }
+            if (typeof adConfigString !== 'string') {
+                console.error("Agent: Unexpected response type from Gemini for ad config. Expected string, got:", typeof adConfigString);
+                return JSON.stringify({ error: "Received unexpected ad configuration format from AI." });
             }
             let parsedAdConfig;
             try {
@@ -212,8 +242,17 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
       const originalStepDescription = objective.plan.steps[pendingInfo.originalToolCall.stepIndex !== undefined ? pendingInfo.originalToolCall.stepIndex : objective.plan.currentStepIndex];
       const contextForGeminiSummary = `The Google Ads campaign creation tool was called (after budget was provided) and returned: ${toolApiResult}. Based on this, provide a concise summary for the user regarding the step: '${originalStepDescription}'.`;
 
-      const finalMessageForStep = await geminiService.fetchGeminiResponse(contextForGeminiSummary, objective.chatHistory, []);
-
+            let finalMessageForStep;
+            try {
+                finalMessageForStep = await geminiService.fetchGeminiResponse(contextForGeminiSummary, objective.chatHistory, []);
+                if (typeof finalMessageForStep !== 'string') {
+                    console.error("Agent: Budget summary response from Gemini was not a string:", finalMessageForStep);
+                    finalMessageForStep = "Campaign creation initiated. Received an unexpected internal confirmation format.";
+                }
+            } catch (error) {
+                console.error("Agent: Error fetching summary from Gemini after budget submission:", error);
+                finalMessageForStep = `Campaign creation initiated. Error getting AI summary: ${error.message}. Tool output was: ${toolApiResult}`;
+            }
       objective.chatHistory.push({ speaker: 'agent', content: finalMessageForStep });
       objective.pendingToolBudgetInquiry = null; // Clear pending state
       // The step is now considered complete, advance plan
@@ -230,19 +269,24 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
       };
   }
 
-
-  if (!objective.plan || objective.plan.status !== 'approved') {
+  // Block execution if plan is in a state that requires user attention or is an error state,
+  // before attempting to execute steps or provide conversational fallback for 'completed' plans.
+  const attentionNeededStatuses = ['pending_approval', 'error_generating_plan', undefined, null];
+  if (!objective.plan || attentionNeededStatuses.includes(objective.plan.status)) {
     let message = "It looks like there's a plan that needs your attention. ";
-    if (!objective.plan || !objective.plan.status) {
+    if (!objective.plan || !objective.plan.status) { // Covers undefined or null status
         message += "A plan has not been initialized yet. Please try selecting the objective again, which may trigger initialization.";
     } else if (objective.plan.status === 'pending_approval') {
         message += "Please approve the current plan before we proceed with this objective.";
-    } else {
-        message += `The current plan status is '${objective.plan.status}'. It needs to be 'approved' to continue.`;
+    } else if (objective.plan.status === 'error_generating_plan') {
+        message += "There was an error generating the plan. Please try re-initializing or check for issues.";
+    } else { // Should not be hit if logic is correct, but as a fallback
+        message += `The current plan status is '${objective.plan.status}'. Please review.`;
     }
-    console.log(`Agent: Plan not approved for objective ${objectiveId}. Status: ${objective.plan ? objective.plan.status : 'N/A'}`);
+    console.log(`Agent: Plan needs attention for objective ${objectiveId}. Status: ${objective.plan ? objective.plan.status : 'N/A'}`);
     return message;
   }
+  // At this point, plan status can be 'approved', 'in_progress', 'completed', or 'pending_scheduling'.
 
   // Plan is approved, commence execution or continue conversation
   console.log(`Agent: Plan approved for objective ${objectiveId}.`);
@@ -290,7 +334,25 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
     console.log(`Agent: Executing step ${currentStepIndex + 1}: "${currentStep}" for objective ${objectiveId}`);
 
     // Call the service function to execute the step (might return text or tool_call)
-    const stepExecutionResult = await geminiService.executePlanStep(currentStep, objective.chatHistory, projectAssets);
+    let stepExecutionResult;
+    try {
+        stepExecutionResult = await geminiService.executePlanStep(currentStep, objective.chatHistory, projectAssets);
+    } catch (error) {
+        console.error(`Agent: Error executing plan step "${currentStep}":`, error);
+        finalMessageForStep = `Error processing step "${currentStep}": ${error.message}`;
+        objective.chatHistory.push({ speaker: 'system', content: finalMessageForStep });
+        // No tool_call if executePlanStep itself failed, so directly update plan and return
+        objective.plan.currentStepIndex = currentStepIndex + 1;
+        objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
+        dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
+        dataStore.updateObjective(objective);
+        return {
+            message: finalMessageForStep,
+            currentStep: currentStepIndex,
+            stepDescription: currentStep,
+            planStatus: objective.plan.status
+        };
+    }
 
     let finalMessageForStep;
 
@@ -330,7 +392,25 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
             // Send tool output back to Gemini for summarization/final response for the step
             const contextForGemini = `The tool ${toolCall.name} was called with arguments ${JSON.stringify(toolCall.arguments)} and returned the following output: ${toolOutput}. Based on this, what is the result or summary for the original step: '${currentStep}'? Please provide a concise textual response for the user.`;
 
-            const geminiResponseAfterTool = await geminiService.fetchGeminiResponse(contextForGemini, objective.chatHistory, projectAssets);
+            let geminiResponseAfterTool;
+            try {
+                geminiResponseAfterTool = await geminiService.fetchGeminiResponse(contextForGemini, objective.chatHistory, projectAssets);
+            } catch (error) {
+                console.error("Agent: Error fetching summary from Gemini after tool call:", error);
+                finalMessageForStep = `Error getting summary after tool execution: ${error.message}. Tool output was: ${toolOutput}`;
+                objective.chatHistory.push({ speaker: 'system', content: finalMessageForStep });
+                // Proceed to next step despite summarization error
+                objective.plan.currentStepIndex = currentStepIndex + 1;
+                objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
+                dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
+                dataStore.updateObjective(objective);
+                return {
+                    message: finalMessageForStep,
+                    currentStep: currentStepIndex,
+                    stepDescription: currentStep,
+                    planStatus: objective.plan.status
+                };
+            }
 
             if (typeof geminiResponseAfterTool === 'object' && geminiResponseAfterTool.tool_call) {
                 console.error("Agent: Gemini requested another tool call immediately after a tool execution. This is not yet supported in this flow.");
@@ -506,11 +586,21 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
   console.log(`Agent: Plan status is '${objective.plan.status}', or step execution block not entered. Proceeding with conversational response.`);
   try {
     // projectAssets are already fetched above
-    const response = await geminiService.fetchGeminiResponse(userInput, chatHistory, projectAssets);
-    return response; // This will be a string for conversational turn
+    const geminiResponse = await geminiService.fetchGeminiResponse(userInput, chatHistory, projectAssets);
+    if (typeof geminiResponse !== 'string') {
+        console.error("Agent: Conversational fallback from Gemini was not a string:", geminiResponse);
+        // It's possible Gemini tried a tool_call based on conversational input.
+        // For a simple conversational turn, we might not want to process the tool_call here
+        // or we might want to inform the user that an unexpected action was attempted.
+        if (typeof geminiResponse === 'object' && geminiResponse.tool_call) {
+             return "Agent: I tried to perform an action based on our conversation, but it seems I got a bit ahead of myself. Could you please rephrase or clarify your request?";
+        }
+        return "Agent: I received an unexpected type of response. Please try again.";
+    }
+    return geminiResponse;
   } catch (error) {
     console.error('Agent: Error fetching response from Gemini service:', error);
-    return "Agent: I'm sorry, I encountered an error trying to get a response.";
+    return "Agent: I'm sorry, I encountered an error trying to get a response: " + error.message;
   }
 }
 
@@ -530,7 +620,18 @@ async function initializeAgent(objectiveId) {
     // Call the new service function to generate the plan
     const project = dataStore.findProjectById(objective.projectId);
     const projectAssets = project ? project.assets : [];
-    const { planSteps, questions } = await geminiService.generatePlanForObjective(objective, projectAssets);
+    let planData;
+    try {
+        planData = await geminiService.generatePlanForObjective(objective, projectAssets);
+    } catch (error) {
+        console.error(`Agent: Error generating plan for objective ${objectiveId}:`, error);
+        objective.plan.status = 'error_generating_plan';
+        objective.plan.steps = [];
+        objective.plan.questions = [`Failed to generate plan: ${error.message}`];
+        dataStore.updateObjective(objective);
+        throw new Error(`Failed to generate plan: ${error.message}`); // Re-throw to inform caller
+    }
+    const { planSteps, questions } = planData;
 
     // Update the objective's plan
     objective.plan.steps = planSteps;

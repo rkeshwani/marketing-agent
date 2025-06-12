@@ -1,6 +1,6 @@
 // Placeholder for Gemini API service
-// const axios = require('axios'); // Will be needed for actual API calls
-// const config = require('../config/config'); // To get API key and endpoint
+const axios = require('axios'); // Will be needed for actual API calls
+const config = require('../config/config'); // To get API key and endpoint
 const { getAllToolSchemas } = require('./toolRegistryService');
 
 /**
@@ -18,16 +18,9 @@ async function fetchGeminiResponse(userInput, chatHistory, projectAssets = []) {
   console.log('GeminiService (fetchGeminiResponse): Received project assets:', projectAssets.length > 0 ? projectAssets.map(a => a.name) : 'No assets');
 
   const tools = getAllToolSchemas();
-  console.log('GeminiService (fetchGeminiResponse): Available tools -', tools.map(t => t.name));
+  // Assuming tool name is at t.name.name based on previous attempt, if not, this might need adjustment
+  console.log('GeminiService (fetchGeminiResponse): Available tools -', tools.map(t => t.name && t.name.name ? t.name.name : t.name));
 
-  // Simulate an API call delay
-  await new Promise(resolve => setTimeout(resolve, 500));
-
-  // TODO: Implement actual API call using axios, passing userInput, chatHistory, projectAssets, and tools.
-  // The body of that request would look something like:
-  // JSON.stringify({ userInput, chatHistory, projectAssets, tools })
-
-  // --- Mocked Gemini API Response Handling ---
 
   // Specific case for plan generation (remains unchanged as per subtask instructions)
   if (userInput.startsWith("Based on the following marketing objective:")) {
@@ -47,66 +40,131 @@ QUESTIONS:
     `.trim();
   }
 
-  // --- General case: Simulate response that could be text or tool_call ---
-  // In a real scenario, the response from `await axios.post(...)` would be parsed.
-  // const apiResponse = await actualGeminiApiCall(userInput, chatHistory, projectAssets, tools);
-  // For now, we simulate this `apiResponse`.
+  // --- Real Gemini API Call ---
+  const GEMINI_API_KEY = config.GEMINI_API_KEY;
+  const GEMINI_API_ENDPOINT = config.GEMINI_API_ENDPOINT;
 
-  // Example: Simulate a tool call for a specific input
-  if (userInput.toLowerCase().includes("search for assets about dogs")) {
-    console.log('GeminiService (fetchGeminiResponse): Simulating tool_call response.');
-    // This is the new structure that fetchGeminiResponse can return.
-    // The agent will need to handle this object.
-    return {
-      tool_call: {
-        name: "semantic_search_assets",
-        arguments: { query: "images of dogs" }
-      }
+  if (!GEMINI_API_KEY || !GEMINI_API_ENDPOINT) {
+    console.error('GeminiService: API Key or Endpoint is missing in config.');
+    // If running in a test environment where config might not be fully populated,
+    // it might be desirable to not throw here but let a mock/test setup handle it.
+    // However, for general robustness, throwing an error is appropriate.
+    throw new Error('Gemini API Key or Endpoint is not configured.');
+  }
+
+  const requestBody = {
+    // The actual Gemini API expects a specific structure, often involving a "contents" array.
+    // This needs to be aligned with the Gemini API documentation for "generateContent".
+    // For now, structuring based on the subtask's description of `requestBody`.
+    // The prompt to Gemini should be constructed from userInput, chatHistory.
+    // Let's assume a simplified model where `userInput` is the main prompt
+    // and `chatHistory` and `projectAssets` are context.
+    // A more robust implementation would format `contents` like:
+    // contents: [
+    //   ...chatHistory.map(msg => ({ role: msg.role, parts: [{ text: msg.parts[0].text }] })), // Reformat history
+    //   { role: "user", parts: [{ text: userInput }] }
+    // ],
+    // tools: [{ functionDeclarations: tools }] // Gemini expects tools under a specific structure
+
+    // Simplified request body as per subtask direct fields:
+    userInput: userInput, // This might need to be part of a 'contents' structure
+    chatHistory: chatHistory, // This also might need to be part of 'contents'
+    projectAssets: projectAssets, // How assets are sent depends on API spec (e.g., inline data or references)
+    tools: tools // This likely needs to be formatted as per Gemini's "tool_config" or "tools"
+  };
+
+  console.log('GeminiService (fetchGeminiResponse): Making POST request to', GEMINI_API_ENDPOINT);
+  // Avoid logging potentially sensitive parts of projectAssets if they contain file content
+  // console.log('GeminiService (fetchGeminiResponse): Request body:', JSON.stringify(requestBody, null, 2));
+
+  try {
+    // The actual request body for Gemini API's generateContent method should be like:
+    // {
+    //   "contents": [
+    //     // ... chat history formatted as user/model turns ...
+    //     { "role": "user", "parts": [{ "text": userInput }] }
+    //   ],
+    //   "tools": [ { "function_declarations": tools } ] // if tools are Google AI style function declarations
+    // }
+    // For this iteration, I will send the simpler requestBody and adjust if testing shows issues.
+    // The key is `Authorization: Bearer ${GEMINI_API_KEY}`.
+    // The subtask specifies `Authorization: Bearer ${config.GEMINI_API_KEY}` which is correct.
+    // It also specifies `axios.post(config.GEMINI_API_ENDPOINT, requestBody, { headers: { 'Authorization': ... } })`
+
+    const apiRequestBody = {
+        contents: [
+            // Simple conversion for now, assuming chatHistory is [{role: 'user'/'model', parts: [{text: '...'}]}]
+            ...chatHistory,
+            { role: "user", parts: [{ text: userInput }] }
+        ],
+        // Assuming `tools` from getAllToolSchemas() are already in the format Gemini expects for function declarations
+        // e.g. { function_declarations: [...] } or needs to be wrapped.
+        // Based on typical Gemini API, it's often { tools: [{ functionDeclarations: tools }] }
+        // For now, sending as received from getAllToolSchemas, wrapped in an object.
+        // This will likely need refinement based on actual API behavior.
+         tools: [{ functionDeclarations: tools }], // This is a common structure
+        // projectAssets might be sent as part of the prompt, or if they are files, using multi-part requests or inline data.
+        // This part is underspecified for a generic Gemini call without knowing asset types.
+        // For now, projectAssets are not explicitly included in `apiRequestBody.contents` unless they are part of `userInput`.
     };
-  }
+    // Add projectAssets information to the prompt if they exist
+    if (projectAssets && projectAssets.length > 0) {
+        let assetsText = "\n\nProject Assets Context:\n";
+        projectAssets.forEach(asset => {
+            assetsText += `- Name: ${asset.name}, Type: ${asset.type}\n`;
+            // Do not include asset.content directly in the prompt unless it's text and brief.
+        });
+        // Find the last user message and append to it, or add a new user message.
+        if (apiRequestBody.contents.length > 0 && apiRequestBody.contents[apiRequestBody.contents.length-1].role === "user") {
+            apiRequestBody.contents[apiRequestBody.contents.length-1].parts[0].text += assetsText;
+        } else {
+            apiRequestBody.contents.push({role: "user", parts: [{text: "Context about project assets:" + assetsText}]});
+        }
+    }
 
-  // Example: Simulate a tool call for image generation
-  if (userInput.toLowerCase().includes("create an image of a cat")) {
-    console.log('GeminiService (fetchGeminiResponse): Simulating tool_call response for image generation.');
-    return {
-      tool_call: {
-        name: "create_image_asset",
-        arguments: { prompt: "A majestic cat sitting on a throne" }
+
+    console.log('GeminiService (fetchGeminiResponse): Sending to Gemini:', JSON.stringify(apiRequestBody, null, 2));
+
+
+    const response = await axios.post(GEMINI_API_ENDPOINT, apiRequestBody, {
+      headers: {
+        'Authorization': `Bearer ${GEMINI_API_KEY}`, // Corrected, was `config.GEMINI_API_KEY` which is the same
+        'Content-Type': 'application/json'
       }
-    };
+    });
+
+    console.log('GeminiService (fetchGeminiResponse): Raw API Response:', JSON.stringify(response.data, null, 2));
+
+    // Parse response as per subtask:
+    // { "candidates": [{ "content": { "parts": [{ "text": "..." }] } }] }
+    // or { "candidates": [{ "content": { "parts": [{ "tool_call": {...} }] } }] }
+    if (response.data && response.data.candidates && response.data.candidates.length > 0) {
+      const candidate = response.data.candidates[0];
+      if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+        const part = candidate.content.parts[0];
+        if (part.tool_call) {
+          console.log('GeminiService (fetchGeminiResponse): Returning tool_call.');
+          return part.tool_call; // Return the tool_call object
+        }
+        if (part.text) {
+          console.log('GeminiService (fetchGeminiResponse): Returning text response.');
+          return part.text; // Return the text string
+        }
+      }
+    }
+
+    console.error('GeminiService (fetchGeminiResponse): Unexpected API response structure.', response.data);
+    throw new Error('Gemini API response structure was not as expected.');
+
+  } catch (error) {
+    console.error('GeminiService (fetchGeminiResponse): Gemini API call failed.', error.message);
+    if (error.response) {
+      console.error('GeminiService (fetchGeminiResponse): API Error Response Data:', error.response.data);
+      console.error('GeminiService (fetchGeminiResponse): API Error Response Status:', error.response.status);
+    }
+    // Re-throw the error so downstream functions can handle it.
+    throw new Error(`Gemini API call failed: ${error.message}`);
   }
-
-  // Default: Simulate a standard text response
-  console.log('GeminiService (fetchGeminiResponse): Simulating text response.');
-  // This is also a new structure. Instead of returning a raw string,
-  // we return an object with a 'text' property, or the agent can check for string directly.
-  // For consistency with tool_call, let's aim for { text: "..." }
-  // However, previous tests might expect a direct string.
-  // Let's return { text: "..." } and adjust tests if necessary, or make agent handle both.
-  // The subtask says "if response.text exists, it should return the response.text".
-  // This implies the simulated or actual API returns { text: "..." } or { tool_call: ... }
-  // So, this function should return the *content* of response.text, not the object.
-  const simulatedText = `Gemini API (placeholder) processed: "${userInput}"`;
-  // To adhere to "return response.text", the *mock* API call would result in { text: simulatedText }
-  // And then this function would return simulatedText.
-  // Let's refine this: The *function* fetchGeminiResponse should return the tool_call object OR the text string.
-
-  // If the (mocked) API call returned { text: "some text" }, we return "some text"
-  // If it returned { tool_call: {...} }, we return the tool_call object.
-
-  // The current mock directly returns a string for plan generation. For other cases:
-  // Let's assume the "API" (which is this simulation) now produces an object.
-  const mockApiResponse = { text: `Gemini API (placeholder) processed: "${userInput}"` }; // Default mock structure
-
-  if (mockApiResponse.tool_call) { // This won't be hit with current mockApiResponse
-      return mockApiResponse.tool_call;
-  }
-  if (mockApiResponse.text) {
-      return mockApiResponse.text;
-  }
-  // Fallback if the response is just a string (to handle plan generation case carefully, though it's handled above)
-  return typeof mockApiResponse === 'string' ? mockApiResponse : "Error: Unexpected response structure from Gemini mock.";
-
 }
 
 async function generatePlanForObjective(objective, projectAssets = []) {
@@ -161,6 +219,12 @@ If you have no questions, write "QUESTIONS: None".
   const geminiResponseString = await fetchGeminiResponse(prompt, [], projectAssets); // Pass projectAssets
   console.log('GeminiService (generatePlanForObjective): Received raw response for parsing:\n', geminiResponseString);
 
+  // Ensure geminiResponseString is a string before splitting
+  if (typeof geminiResponseString !== 'string') {
+    console.error('GeminiService (generatePlanForObjective): Expected a string response for plan generation, but received:', typeof geminiResponseString, geminiResponseString);
+    // Handle error appropriately - perhaps return empty plan/questions or throw
+    return { planSteps: [], questions: ["Error: Plan generation failed due to unexpected response type."] };
+  }
 
   const planSteps = [];
   const questions = [];
@@ -200,13 +264,13 @@ If you have no questions, write "QUESTIONS: None".
 
 module.exports = {
   fetchGeminiResponse,
-  generatePlanForObjective, // Export the new function
+  generatePlanForObjective,
   generateProjectContextQuestions,
   structureProjectContextAnswers,
-  executePlanStep, // Export the new function
+  executePlanStep,
 };
 
-// --- New Function: executePlanStep ---
+// --- Function: executePlanStep ---
 /**
  * Executes a single step of a plan by calling fetchGeminiResponse.
  *
@@ -252,27 +316,32 @@ Return ONLY a JSON string array of the questions. For example:
 
   try {
     // In a real scenario, fetchGeminiResponse would be a generic function.
-    // For this subtask, we'll assume it can handle this prompt and might return a JSON string.
-    // We might need to adjust fetchGeminiResponse or add a new specialized function if its
-    // current simulation logic interferes. For now, let's proceed.
-    const geminiResponseString = await fetchGeminiResponse(prompt, []); // No chat history or assets needed for this
+    const geminiResponse = await fetchGeminiResponse(prompt, []); // No chat history or assets needed for this
 
-    console.log('GeminiService (generateProjectContextQuestions): Received raw response from Gemini:\n', geminiResponseString);
+    console.log('GeminiService (generateProjectContextQuestions): Received response from Gemini:\n', geminiResponse);
 
-    // Attempt to parse the response as JSON
-    let parsedQuestions = JSON.parse(geminiResponseString);
+    // The real API will now return text that needs to be parsed, or a tool_call.
+    // This function expects the text to be a JSON string.
+    if (typeof geminiResponse === 'string') {
+      try {
+        let parsedQuestions = JSON.parse(geminiResponse);
 
-    if (!Array.isArray(parsedQuestions)) {
-      console.error('GeminiService (generateProjectContextQuestions): Parsed response is not an array. Response:', parsedQuestions);
-      // Return a default set of questions or an empty array as per requirements
-      return ["What are the key objectives for this project?", "Who is the primary target audience?", "Are there any existing brand guidelines or assets I should be aware of?"];
+        if (!Array.isArray(parsedQuestions)) {
+          console.error('GeminiService (generateProjectContextQuestions): Parsed response is not an array. Response:', parsedQuestions);
+          return ["What are the key objectives for this project?", "Who is the primary target audience?", "Are there any existing brand guidelines or assets I should be aware of?"];
+        }
+        parsedQuestions = parsedQuestions.filter(q => typeof q === 'string');
+        console.log('GeminiService (generateProjectContextQuestions): Parsed questions successfully:', parsedQuestions);
+        return parsedQuestions;
+      } catch (parseError) {
+        console.error('GeminiService (generateProjectContextQuestions): Error parsing JSON string from Gemini:', parseError, 'Raw response:', geminiResponse);
+        return ["Error parsing questions from AI.", "What is the primary goal of this project?"];
+      }
+    } else {
+      // If it's not a string, it might be a tool_call or an error, which this function isn't designed to handle.
+      console.error('GeminiService (generateProjectContextQuestions): Expected a string response containing JSON, but received:', typeof geminiResponse, geminiResponse);
+      return ["Unexpected response type from AI.", "Please clarify project objectives."];
     }
-
-    // Ensure all elements are strings (basic validation)
-    parsedQuestions = parsedQuestions.filter(q => typeof q === 'string');
-
-    console.log('GeminiService (generateProjectContextQuestions): Parsed questions successfully:', parsedQuestions);
-    return parsedQuestions;
 
   } catch (error) {
     console.error('GeminiService (generateProjectContextQuestions): Error parsing Gemini response or other issue:', error);
@@ -319,22 +388,30 @@ Return ONLY the JSON object. For example:
   console.log('GeminiService (structureProjectContextAnswers): Sending prompt to Gemini:\n', prompt);
 
   try {
-    // Assuming fetchGeminiResponse can handle this prompt and is expected to return a JSON string.
-    const geminiResponseString = await fetchGeminiResponse(prompt, []); // No chat history or assets
+    const geminiResponse = await fetchGeminiResponse(prompt, []); // No chat history or assets
 
-    console.log('GeminiService (structureProjectContextAnswers): Received raw response from Gemini:\n', geminiResponseString);
+    console.log('GeminiService (structureProjectContextAnswers): Received response from Gemini:\n', geminiResponse);
 
-    // Attempt to parse the response as JSON
-    let structuredContext = JSON.parse(geminiResponseString);
+    // This function expects the text response from Gemini to be a JSON string.
+    if (typeof geminiResponse === 'string') {
+      try {
+        let structuredContext = JSON.parse(geminiResponse);
 
-    if (typeof structuredContext !== 'object' || structuredContext === null || Array.isArray(structuredContext)) {
-      console.error('GeminiService (structureProjectContextAnswers): Parsed response is not a valid object. Response:', structuredContext);
-      // Return a default error structure or an empty object
-      return { error: "Failed to structure project context.", details: "Response was not a valid JSON object." };
+        if (typeof structuredContext !== 'object' || structuredContext === null || Array.isArray(structuredContext)) {
+          console.error('GeminiService (structureProjectContextAnswers): Parsed response is not a valid object. Response:', structuredContext);
+          return { error: "Failed to structure project context.", details: "Response was not a valid JSON object." };
+        }
+        console.log('GeminiService (structureProjectContextAnswers): Structured context successfully:', structuredContext);
+        return structuredContext;
+      } catch (parseError) {
+        console.error('GeminiService (structureProjectContextAnswers): Error parsing JSON string from Gemini:', parseError, 'Raw response:', geminiResponse);
+        return { error: "Failed to structure project context.", details: "Error parsing JSON response from AI." };
+      }
+    } else {
+      // If it's not a string, it might be a tool_call or an error.
+      console.error('GeminiService (structureProjectContextAnswers): Expected a string response containing JSON, but received:', typeof geminiResponse, geminiResponse);
+      return { error: "Failed to structure project context.", details: "Unexpected response type from AI." };
     }
-
-    console.log('GeminiService (structureProjectContextAnswers): Structured context successfully:', structuredContext);
-    return structuredContext;
 
   } catch (error) {
     console.error('GeminiService (structureProjectContextAnswers): Error parsing Gemini response or other issue:', error);
