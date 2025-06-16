@@ -124,7 +124,10 @@ The following environment variables are required to run the application. Create 
 
 ### AI Agent API Key
 
-- **`GEMINI_API_KEY`**: API key for the Gemini AI language model service.
+The application integrates with the Gemini AI language model service. Ensure the following environment variables are set:
+
+- **`GEMINI_API_KEY`**: Your API key for the Gemini AI language model service.
+- **`GEMINI_API_ENDPOINT`**: The API endpoint URL for the Gemini service (e.g., `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent`). Refer to the official Gemini documentation for the correct endpoint for your model.
 
 ### LinkedIn Scopes and Permissions
 The application requires the following OAuth scopes for LinkedIn integration. These are requested during the "Connect LinkedIn" process:

@@ -1,17 +1,20 @@
-// Placeholder for Gemini API service
-const axios = require('axios'); // Will be needed for actual API calls
+// Service for interacting with the Gemini API.
+const axios = require('axios');
 const config = require('../config/config'); // To get API key and endpoint
 const { getAllToolSchemas } = require('./toolRegistryService');
 
 /**
- * Fetches a response from the (placeholder) Gemini API.
- * In a real scenario, this function would make an HTTP request to the Gemini API.
+ * Fetches a response from the Gemini API.
+ * This function makes an HTTP POST request to the configured Gemini API endpoint.
+ * It can return either a textual response or a tool_call object if the API requests a tool execution.
  *
- * @param {string} userInput The user's latest message.
- * @param {Array<Object>} chatHistory The entire chat history (might be used for context).
- * @param {Array<Object>} projectAssets Assets associated with the project (optional).
- * @returns {Promise<string|Object>} A promise that resolves to the simulated API response,
- * which can be a string (for text responses) or an object (for tool calls).
+ * @param {string} userInput The user's latest message or prompt.
+ * @param {Array<Object>} chatHistory The entire chat history for context.
+ * @param {Array<Object>} [projectAssets=[]] Optional array of project assets for context.
+ * @returns {Promise<string|Object>} A promise that resolves to the API response:
+ * - A string for text responses.
+ * - An object for tool calls (e.g., `{ name: "tool_name", arguments: { ... } }`).
+ * @throws {Error} If the API call fails or the response structure is unexpected.
  */
 async function fetchGeminiResponse(userInput, chatHistory, projectAssets = []) {
   console.log('GeminiService (fetchGeminiResponse): Received input for API call -', userInput);
@@ -290,9 +293,13 @@ async function executePlanStep(stepDescription, chatHistory, projectAssets = [])
 
 /**
  * Generates questions to understand a project's context using Gemini.
+ * The response from Gemini is expected to be a JSON string array, potentially wrapped in markdown.
+ * This function handles extraction from markdown and parsing.
+ *
  * @param {string} projectName The name of the project.
  * @param {string} projectDescription The description of the project.
  * @returns {Promise<Array<string>>} A promise that resolves to an array of question strings.
+ * Returns a default list of questions in case of parsing errors or unexpected API response types.
  */
 async function generateProjectContextQuestions(projectName, projectDescription) {
   console.log('GeminiService (generateProjectContextQuestions): Received project details - Name:', projectName);
@@ -323,8 +330,16 @@ Return ONLY a JSON string array of the questions. For example:
     // The real API will now return text that needs to be parsed, or a tool_call.
     // This function expects the text to be a JSON string.
     if (typeof geminiResponse === 'string') {
+      let jsonStringToParse = geminiResponse;
+      const markdownJsonRegex = /```(?:json)?\s*([\s\S]*?)\s*```/;
+      const match = geminiResponse.match(markdownJsonRegex);
+      if (match && match[1]) {
+        jsonStringToParse = match[1].trim();
+        console.log('GeminiService (generateProjectContextQuestions): Extracted JSON from markdown block:', jsonStringToParse);
+      }
+
       try {
-        let parsedQuestions = JSON.parse(geminiResponse);
+        let parsedQuestions = JSON.parse(jsonStringToParse);
 
         if (!Array.isArray(parsedQuestions)) {
           console.error('GeminiService (generateProjectContextQuestions): Parsed response is not an array. Response:', parsedQuestions);
@@ -354,10 +369,14 @@ Return ONLY a JSON string array of the questions. For example:
 
 /**
  * Structures user answers about project context into a JSON object using Gemini.
+ * The response from Gemini is expected to be a JSON object string, potentially wrapped in markdown.
+ * This function handles extraction from markdown and parsing.
+ *
  * @param {string} projectName The name of the project.
  * @param {string} projectDescription The description of the project.
  * @param {string} userAnswersString A string containing the user's answers to context questions.
  * @returns {Promise<Object>} A promise that resolves to a structured JSON object of the context.
+ * Returns an error object in case of parsing errors or unexpected API response types.
  */
 async function structureProjectContextAnswers(projectName, projectDescription, userAnswersString) {
   console.log('GeminiService (structureProjectContextAnswers): Received project details - Name:', projectName);
@@ -394,8 +413,16 @@ Return ONLY the JSON object. For example:
 
     // This function expects the text response from Gemini to be a JSON string.
     if (typeof geminiResponse === 'string') {
+      let jsonStringToParse = geminiResponse;
+      const markdownJsonRegex = /```(?:json)?\s*([\s\S]*?)\s*```/;
+      const match = geminiResponse.match(markdownJsonRegex);
+      if (match && match[1]) {
+        jsonStringToParse = match[1].trim();
+        console.log('GeminiService (structureProjectContextAnswers): Extracted JSON from markdown block:', jsonStringToParse);
+      }
+
       try {
-        let structuredContext = JSON.parse(geminiResponse);
+        let structuredContext = JSON.parse(jsonStringToParse);
 
         if (typeof structuredContext !== 'object' || structuredContext === null || Array.isArray(structuredContext)) {
           console.error('GeminiService (structureProjectContextAnswers): Parsed response is not a valid object. Response:', structuredContext);

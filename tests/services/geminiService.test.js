@@ -249,6 +249,26 @@ describe('GeminiService', () => {
             expect(result).toEqual(["Unexpected response type from AI.", "Please clarify project objectives."]);
             expect(axios.post).toHaveBeenCalledTimes(1);
         });
+
+        test('should correctly parse questions from markdown code block', async () => {
+            const mockQuestions = ["Question from markdown?"];
+            const markdownResponse = "```json\n" + JSON.stringify(mockQuestions) + "\n```";
+            axios.post.mockResolvedValueOnce({
+                data: { candidates: [{ content: { parts: [{ text: markdownResponse }] } }] }
+            });
+            const result = await geminiService.generateProjectContextQuestions('Test Project', 'Description');
+            expect(result).toEqual(mockQuestions);
+        });
+
+        test('should correctly parse questions from simple markdown code block', async () => {
+            const mockQuestions = ["Another question?"];
+            const markdownResponse = "```\n" + JSON.stringify(mockQuestions) + "\n```";
+            axios.post.mockResolvedValueOnce({
+                data: { candidates: [{ content: { parts: [{ text: markdownResponse }] } }] }
+            });
+            const result = await geminiService.generateProjectContextQuestions('Test Project', 'Description');
+            expect(result).toEqual(mockQuestions);
+        });
     });
 
     describe('structureProjectContextAnswers', () => {
@@ -288,6 +308,26 @@ describe('GeminiService', () => {
             const result = await geminiService.structureProjectContextAnswers('Test Project', 'Description', 'Answers');
             expect(result).toEqual({ error: "Failed to structure project context.", details: "Unexpected response type from AI." });
             expect(axios.post).toHaveBeenCalledTimes(1);
+        });
+
+        test('should correctly parse context from markdown code block', async () => {
+            const mockContext = { item: "data from markdown" };
+            const markdownResponse = "```json\n" + JSON.stringify(mockContext) + "\n```";
+            axios.post.mockResolvedValueOnce({
+                data: { candidates: [{ content: { parts: [{ text: markdownResponse }] } }] }
+            });
+            const result = await geminiService.structureProjectContextAnswers('Test Project', 'Description', 'Answers');
+            expect(result).toEqual(mockContext);
+        });
+
+        test('should correctly parse context from simple markdown code block', async () => {
+            const mockContext = { another: "data" };
+            const markdownResponse = "```\n" + JSON.stringify(mockContext) + "\n```";
+            axios.post.mockResolvedValueOnce({
+                data: { candidates: [{ content: { parts: [{ text: markdownResponse }] } }] }
+            });
+            const result = await geminiService.structureProjectContextAnswers('Test Project', 'Description', 'Answers');
+            expect(result).toEqual(mockContext);
         });
     });
 });
