@@ -1,0 +1,1 @@
+Based on project context: "{{projectContext}}", for Google Ads campaign ID "{{campaignId}}", generate a detailed JSON configuration for an Ad Group (name suggestion: "{{ad_group_name_suggestion}}"). Include relevant keywords and bids if appropriate from the context.

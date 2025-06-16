@@ -1,0 +1,2 @@
+This is the first time setting up a recurring task. The overall objective is: "{{baseBrief}}".
+Please generate a detailed, actionable plan that can serve as a template for future recurrences. The steps should be somewhat generic if they are to be reused, but specific enough to be actionable.

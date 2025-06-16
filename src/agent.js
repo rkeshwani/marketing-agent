@@ -1,6 +1,7 @@
 // Import services
 const geminiService = require('./services/geminiService');
 const { getToolSchema } = require('./services/toolRegistryService');
+const { getPrompt } = require('./services/promptProvider');
 // const vectorService = require('./services/vectorService'); // No longer needed directly in agent.js
 // const fetch = require('node-fetch'); // No longer needed directly in agent.js
 // const config = require('../config/config'); // No longer needed directly in agent.js
@@ -53,7 +54,11 @@ async function executeTool(toolName, toolArguments, projectId) {
             const project = global.dataStore.findProjectById(projectId);
             const projectContext = project ? project.description || project.name : "No project context available.";
 
-            const geminiPromptForConfig = `Based on the project context: "${projectContext}", and a request to create a Google Ads campaign (name suggestion: "${toolArguments.campaign_name_suggestion}", type suggestion: "${toolArguments.campaign_type_suggestion}"), generate a detailed JSON configuration object for the Google Ads API Campaign resource. Identify any critical missing information. For budget, explicitly state 'BUDGET_NEEDED'.`;
+            const geminiPromptForConfig = await getPrompt('agent/google_ads_campaign_config', {
+                projectContext: projectContext,
+                campaign_name_suggestion: toolArguments.campaign_name_suggestion,
+                campaign_type_suggestion: toolArguments.campaign_type_suggestion
+            });
 
             // Pass objective.chatHistory for context, projectAssets is empty for this type of call
             let campaignConfigOrClarification;
@@ -81,7 +86,7 @@ async function executeTool(toolName, toolArguments, projectId) {
                 };
                 return {
                     askUserInput: true,
-                    message: "Okay, I've drafted a campaign structure. What budget (e.g., '$50 daily' or '$1000 total') would you like to set for this campaign?",
+                    message: await getPrompt('agent/budget_inquiry'),
                 };
             }
 
@@ -111,7 +116,11 @@ async function executeTool(toolName, toolArguments, projectId) {
             const projectContext = project ? project.description || project.name : "No project context available.";
             const campaignId = toolArguments.campaign_id;
 
-            const geminiPromptForAdGroupConfig = `Based on project context: "${projectContext}", for Google Ads campaign ID "${campaignId}", generate a detailed JSON configuration for an Ad Group (name suggestion: "${toolArguments.ad_group_name_suggestion}"). Include relevant keywords and bids if appropriate from the context.`;
+            const geminiPromptForAdGroupConfig = await getPrompt('agent/google_ads_adgroup_config', {
+                projectContext: projectContext,
+                campaignId: campaignId,
+                ad_group_name_suggestion: toolArguments.ad_group_name_suggestion
+            });
 
             let adGroupConfigString;
             try {
@@ -144,7 +153,11 @@ async function executeTool(toolName, toolArguments, projectId) {
             const projectContext = project ? project.description || project.name : "No project context available.";
             const adGroupId = toolArguments.ad_group_id;
 
-            const geminiPromptForAdConfig = `Based on project context: "${projectContext}", for Google Ads ad group ID "${adGroupId}", generate a detailed JSON configuration for an Ad (type suggestion: "${toolArguments.ad_type_suggestion}"). Include headlines, descriptions, and final URLs if appropriate from the context.`;
+            const geminiPromptForAdConfig = await getPrompt('agent/google_ads_ad_config', {
+                projectContext: projectContext,
+                adGroupId: adGroupId,
+                ad_type_suggestion: toolArguments.ad_type_suggestion
+            });
 
             let adConfigString;
             try {
@@ -240,7 +253,10 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
 
       // Now, take toolApiResult and get a final summary from Gemini.
       const originalStepDescription = objective.plan.steps[pendingInfo.originalToolCall.stepIndex !== undefined ? pendingInfo.originalToolCall.stepIndex : objective.plan.currentStepIndex];
-      const contextForGeminiSummary = `The Google Ads campaign creation tool was called (after budget was provided) and returned: ${toolApiResult}. Based on this, provide a concise summary for the user regarding the step: '${originalStepDescription}'.`;
+      const contextForGeminiSummary = await getPrompt('agent/budget_submission_summary', {
+          toolApiResult: toolApiResult,
+          originalStepDescription: originalStepDescription
+      });
 
             let finalMessageForStep;
             try {
@@ -390,7 +406,12 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
             });
 
             // Send tool output back to Gemini for summarization/final response for the step
-            const contextForGemini = `The tool ${toolCall.name} was called with arguments ${JSON.stringify(toolCall.arguments)} and returned the following output: ${toolOutput}. Based on this, what is the result or summary for the original step: '${currentStep}'? Please provide a concise textual response for the user.`;
+            const contextForGemini = await getPrompt('agent/tool_output_summary', {
+                toolName: toolCall.name,
+                toolArguments: JSON.stringify(toolCall.arguments),
+                toolOutput: toolOutput,
+                currentStep: currentStep
+            });
 
             let geminiResponseAfterTool;
             try {

@@ -2,6 +2,7 @@
 const axios = require('axios');
 const config = require('../config/config'); // To get API key and endpoint
 const { getAllToolSchemas } = require('./toolRegistryService');
+const { getPrompt } = require('./promptProvider'); // Assuming promptProvider.js is in the same directory
 
 /**
  * Fetches a response from the Gemini API.
@@ -27,20 +28,10 @@ async function fetchGeminiResponse(userInput, chatHistory, projectAssets = []) {
 
   // Specific case for plan generation (remains unchanged as per subtask instructions)
   if (userInput.startsWith("Based on the following marketing objective:")) {
-    console.log('GeminiService (fetchGeminiResponse): Detected plan generation prompt, returning simulated structured plan string.');
-    // This response is a string, and generatePlanForObjective expects to parse it.
-    return `
-PLAN:
-- Step 1: Define target audience for ${userInput.match(/Title: "(.*?)"/)[1]}. [API: No, Content: Yes]
-- Step 2: Develop key messaging. [API: No, Content: Yes]
-- Step 3: Create 3 pieces of initial content. [API: Yes, Content: Yes]
-- Step 4: Schedule content posting. [API: Yes, Content: No]
-
-QUESTIONS:
-- What is the primary platform for this campaign?
-- Are there any existing brand guidelines to follow?
-- What is the budget for content creation, if any?
-    `.trim();
+    console.log('GeminiService (fetchGeminiResponse): Detected plan generation prompt, returning simulated structured plan string from PromptProvider.');
+    const match = userInput.match(/Title: "(.*?)"/);
+    const title = match && match[1] ? match[1] : "Unknown Title"; // Extract title for the prompt
+    return await getPrompt('services/geminiService/simulated_plan_generation', { title: title });
   }
 
   // --- Real Gemini API Call ---
@@ -178,45 +169,26 @@ async function generatePlanForObjective(objective, projectAssets = []) {
   const baseBrief = objective.brief;
 
   if (objective.currentRecurrenceContext && objective.currentRecurrenceContext.previousPostSummary) {
-    userPromptContent = `This is a recurring task. The summary of the last completed instance was: "${objective.currentRecurrenceContext.previousPostSummary}".
-The overall objective is: "${baseBrief}".
-Please generate a detailed, actionable plan for the *next* instance of this recurring task. This new plan should ensure continuity or appropriate variation based on the previous actions and summary. Focus on generating specific, actionable steps for this new instance.`;
+      userPromptContent = await getPrompt('services/geminiService/user_prompt_recurring_with_summary', {
+          previousPostSummary: objective.currentRecurrenceContext.previousPostSummary,
+          baseBrief: baseBrief
+      });
   } else if (objective.isRecurring && !objective.originalPlan) {
-    // This condition means it's the first time we are generating a plan for an objective that IS recurring,
-    // but its originalPlan (template) hasn't been stored yet.
-    userPromptContent = `This is the first time setting up a recurring task. The overall objective is: "${baseBrief}".
-Please generate a detailed, actionable plan that can serve as a template for future recurrences. The steps should be somewhat generic if they are to be reused, but specific enough to be actionable.`;
+      userPromptContent = await getPrompt('services/geminiService/user_prompt_recurring_first_time', {
+          baseBrief: baseBrief
+      });
   } else {
-    userPromptContent = `Generate a detailed, actionable plan for the objective: "${baseBrief}".`;
+      userPromptContent = await getPrompt('services/geminiService/user_prompt_standard_objective', {
+          baseBrief: baseBrief
+      });
   }
 
-  const prompt = `
-Based on the following marketing objective:
-Title: "${objective.title}"
-Contextual Brief: "${userPromptContent}"
-
-AVAILABLE_ASSETS:
-${projectAssets.length > 0 ? projectAssets.map(asset => `- ${asset.name} (Type: ${asset.type}, Tags: ${asset.tags.join(', ')})`).join('\n') : 'No assets available.'}
-
-Please generate a strategic plan. The plan should consist of clear, actionable steps.
-For each step, consider if it requires:
-1. Accessing social media APIs (e.g., for posting, fetching data).
-2. Creating new content (e.g., text, images, videos).
-
-If you need more information from the user to create a more effective or complete plan, please list your questions clearly.
-
-Structure your response as follows:
-PLAN:
-- Step 1: Description of step 1. [API: Yes/No, Content: Yes/No]
-- Step 2: Description of step 2. [API: Yes/No, Content: Yes/No]
-...
-
-QUESTIONS:
-- Question 1?
-- Question 2?
-...
-If you have no questions, write "QUESTIONS: None".
-  `.trim();
+  const availableAssetsString = projectAssets.length > 0 ? projectAssets.map(asset => `- ${asset.name} (Type: ${asset.type}, Tags: ${asset.tags.join(', ')})`).join('\n') : 'No assets available.';
+  const prompt = await getPrompt('services/geminiService/generate_plan_for_objective', {
+      objectiveTitle: objective.title,
+      userPromptContent: userPromptContent,
+      availableAssets: availableAssetsString
+  });
 
   // Call the existing fetchGeminiResponse with the detailed prompt
   const geminiResponseString = await fetchGeminiResponse(prompt, [], projectAssets); // Pass projectAssets
@@ -304,20 +276,10 @@ async function executePlanStep(stepDescription, chatHistory, projectAssets = [])
 async function generateProjectContextQuestions(projectName, projectDescription) {
   console.log('GeminiService (generateProjectContextQuestions): Received project details - Name:', projectName);
 
-  const prompt = `
-Project Name: "${projectName}"
-Project Description: "${projectDescription}"
-
-Based on the project name and description, please generate 3-5 questions to help me understand the project's context more deeply.
-These questions should cover:
-- The project's relation to my overall brand.
-- Any specific branding standards or guidelines I need to adhere to.
-- The desired voice and tone for the project's communications.
-- The specific feeling or emotion the project aims to evoke in the target audience.
-
-Return ONLY a JSON string array of the questions. For example:
-["Question 1?", "Question 2?", "What is the primary goal of this project?"]
-  `.trim();
+  const prompt = await getPrompt('services/geminiService/generate_project_context_questions', {
+      projectName: projectName,
+      projectDescription: projectDescription
+  });
 
   console.log('GeminiService (generateProjectContextQuestions): Sending prompt to Gemini:\n', prompt);
 
@@ -382,27 +344,11 @@ async function structureProjectContextAnswers(projectName, projectDescription, u
   console.log('GeminiService (structureProjectContextAnswers): Received project details - Name:', projectName);
   console.log('GeminiService (structureProjectContextAnswers): User answers string:', userAnswersString);
 
-  const prompt = `
-Project Name: "${projectName}"
-Project Description: "${projectDescription}"
-User Answers to Context Questions:
-"${userAnswersString}"
-
-Based on the project name, description, and the user's answers, please analyze and structure this information into a concise JSON object.
-This object should summarize the key aspects of the project's context, including (but not limited to):
-- brandIdentity: A summary of how the project relates to the user's overall brand.
-- projectVoice: The desired voice and tone for the project.
-- desiredFeeling: The feeling or emotion the project should evoke.
-- keyPoints: An array of crucial takeaways, requirements, or constraints mentioned by the user.
-
-Return ONLY the JSON object. For example:
-{
-  "brandIdentity": "The project is a core part of our new 'Innovate Everyday' campaign and should reflect our company's commitment to cutting-edge solutions.",
-  "projectVoice": "Professional yet approachable, inspiring confidence.",
-  "desiredFeeling": "Users should feel empowered and excited about the possibilities.",
-  "keyPoints": ["Adherence to the new blue color palette is mandatory.", "Target audience is young professionals aged 25-35.", "Launch date is critical."]
-}
-  `.trim();
+  const prompt = await getPrompt('services/geminiService/structure_project_context_answers', {
+      projectName: projectName,
+      projectDescription: projectDescription,
+      userAnswersString: userAnswersString
+  });
 
   console.log('GeminiService (structureProjectContextAnswers): Sending prompt to Gemini:\n', prompt);
 

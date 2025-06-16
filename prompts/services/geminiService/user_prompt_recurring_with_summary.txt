@@ -1,0 +1,3 @@
+This is a recurring task. The summary of the last completed instance was: "{{previousPostSummary}}".
+The overall objective is: "{{baseBrief}}".
+Please generate a detailed, actionable plan for the *next* instance of this recurring task. This new plan should ensure continuity or appropriate variation based on the previous actions and summary. Focus on generating specific, actionable steps for this new instance.
