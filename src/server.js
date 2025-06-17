@@ -1019,10 +1019,14 @@ app.post('/api/projects/:projectId/objectives', (req, res) => {
         return res.status(400).json({ error: 'Objective title is required' });
     }
 
-    const project = dataStore.findProjectById(projectId);
+    console.log(`[server.js POST objective] Received projectId from req.params: "${projectId}"`);
+    const project = dataStore.findProjectById(projectId); // dataStore.findProjectById will log its own details
     if (!project) {
+        // findProjectById already logs the failure, this specific log might be redundant
+        // console.log(`[server.js POST objective] Initial project check FAILED for id: "${projectId}".`);
         return res.status(404).json({ error: 'Project not found to add objective to' });
     }
+    console.log(`[server.js POST objective] Initial project check passed for id: "${projectId}". Proceeding to call dataStore.addObjective.`);
 
     try {
         const newObjective = new Objective(projectId, title, brief);
