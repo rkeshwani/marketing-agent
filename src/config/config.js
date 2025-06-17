@@ -1,3 +1,4 @@
+require('dotenv').config();
 // Configuration for the application
 
 // IMPORTANT:
