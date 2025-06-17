@@ -1146,29 +1146,7 @@ app.post('/api/objectives/:objectiveId/chat', async (req, res) => {
 });
 
 // === Original Chat API endpoint (to be DEPRECATED or modified later if needed) ===
-// app.post('/api/chat', async (req, res) => { ... }); // Keep it for now but it won't be used by new UI
-app.post('/api/chat', async (req, res) => {
-  try {
-    const { userInput, chatHistory } = req.body;
-
-    if (!userInput) {
-      return res.status(400).json({ error: 'userInput is required' });
-    }
-
-    // chatHistory can be optional or defaults to an empty array if not provided
-    const history = chatHistory || [];
-
-    // For this generic /api/chat endpoint, there's no objectiveId.
-    // The getAgentResponse now requires it. This endpoint is problematic.
-    // For now, I'll pass null or undefined, and getAgentResponse will handle it by returning an error message.
-    // This endpoint should likely be removed or re-thought if objective-specific context is always required.
-    const agentResponse = await getAgentResponse(userInput, history, null);
-    res.json({ response: agentResponse });
-  } catch (error) {
-    console.error('API Error:', error);
-    res.status(500).json({ error: 'Failed to get agent response' });
-  }
-});
+// The /api/chat endpoint has been removed as it's redundant and not objective-specific.
 
 // All other GET requests not handled by the static middleware or API routes
 // should serve the main client application (index.html).
@@ -1179,7 +1157,6 @@ app.get(/^\/(?!api).*/, (req, res) => {
 
 app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}`);
-  console.log('PWA client should be accessible at http://localhost:${port}/');
 
   // Start the scheduler
   console.log(`Starting scheduler to check for tasks every ${SCHEDULER_INTERVAL_MS / 1000} seconds.`);

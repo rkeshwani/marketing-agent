@@ -275,8 +275,7 @@ module.exports = {
     findProjectById,
     updateProjectById,
     deleteProjectById,
-    // addObjective, // Original addObjective might be removed or renamed if new signature is preferred
-    addObjective, // Keep new addObjective or decide on a naming convention
+    addObjective,
     getObjectivesByProjectId,
     findObjectiveById,
     updateObjectiveById,

@@ -2,13 +2,7 @@
 const geminiService = require('./services/geminiService');
 const { getToolSchema } = require('./services/toolRegistryService');
 const { getPrompt } = require('./services/promptProvider');
-// const vectorService = require('./services/vectorService'); // No longer needed directly in agent.js
-// const fetch = require('node-fetch'); // No longer needed directly in agent.js
-// const config = require('../config/config'); // No longer needed directly in agent.js
 const toolExecutorService = require('./services/toolExecutorService'); // Import the new service
-
-// --- Specific Tool Implementations ---
-// These are now moved to toolExecutorService.js
 
 // --- Tool Execution Dispatcher ---
 async function executeTool(toolName, toolArguments, projectId) {
@@ -183,6 +177,8 @@ async function executeTool(toolName, toolArguments, projectId) {
             }
             return await toolExecutorService.execute_google_ads_create_ad_from_config(parsedAdConfig, projectId);
         }
+        case 'execute_dynamic_asset_script':
+            return await toolExecutorService.execute_dynamic_asset_script(toolCall.arguments, objective.projectId);
         default:
             console.error(`Agent: Unknown tool name in executeTool dispatcher: ${toolName}`);
             return JSON.stringify({ error: `Tool '${toolName}' is not recognized by the executeTool dispatcher.` });
@@ -220,10 +216,42 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
       const pendingInfo = objective.pendingToolBudgetInquiry;
 
       console.log(`Agent: Received budget "${budget}" for pending campaign: ${pendingInfo.originalToolCall.name}.`);
-      // TODO: Validate budget format.
 
-      objective.chatHistory.push({ speaker: 'user', content: budget });
-      objective.chatHistory.push({ speaker: 'agent', content: `Understood. Budget set to: ${budget}. Now creating the campaign...` });
+      // Validate budget format
+      const isValidBudget = (budgetInput) => {
+        if (typeof budgetInput !== 'string' && typeof budgetInput !== 'number') {
+            return false;
+        }
+        const cleanedBudget = String(budgetInput).replace(/[\s$,€£¥]/g, ''); // Remove currency symbols and whitespace
+        const number = parseFloat(cleanedBudget);
+        return !isNaN(number) && number > 0;
+      };
+
+      if (!isValidBudget(budget)) {
+        const errorMessage = "Invalid budget format. Please provide a valid positive number (e.g., 100 or $100.50).";
+        objective.chatHistory.push({ speaker: 'user', content: budget }); // Log user's attempt
+        objective.chatHistory.push({ speaker: 'agent', content: errorMessage });
+        objective.pendingToolBudgetInquiry = null; // Clear pending state
+
+        // Advance step to avoid loop, using the original step index from when the inquiry was made
+        objective.plan.currentStepIndex = (pendingInfo.originalToolCall.stepIndex !== undefined ? pendingInfo.originalToolCall.stepIndex : objective.plan.currentStepIndex) + 1;
+        objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
+
+        // Use global.dataStore consistently if that's the pattern
+        global.dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory, null);
+
+        return {
+            message: errorMessage,
+            currentStep: objective.plan.currentStepIndex -1, // step just attempted (now advanced)
+            stepDescription: objective.plan.steps[objective.plan.currentStepIndex -1], // description of step just attempted
+            planStatus: objective.plan.status
+        };
+      }
+      // If valid, proceed with existing logic.
+
+      objective.chatHistory.push({ speaker: 'user', content: budget }); // Log valid user input
+      // Updated confirmation message to reflect successful validation before proceeding
+      objective.chatHistory.push({ speaker: 'agent', content: `Budget of ${budget} accepted. Now creating the campaign...` });
 
       let parsedCampaignConfigFromPending;
       try {
@@ -383,69 +411,125 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
             // Update chat history with this error
             objective.chatHistory.push({ speaker: 'system', content: `Error: Tool ${toolCall.name} not found.` });
         } else {
-            // TODO: Add argument validation against toolSchema.parameters here in a future step.
+            let validationErrors = [];
+            if (toolSchema.parameters && toolSchema.parameters.properties) {
+                const schemaParams = toolSchema.parameters.properties;
+                const requiredParams = toolSchema.parameters.required || [];
 
-            const toolOutput = await executeTool(toolCall.name, toolCall.arguments, objective.projectId); // Objective is in scope
-            console.log(`Agent: Tool ${toolCall.name} executed. Output:`, toolOutput);
+                // Check required params
+                for (const reqParam of requiredParams) {
+                    if (toolCall.arguments[reqParam] === undefined) {
+                        validationErrors.push(`Missing required argument '${reqParam}'.`);
+                    }
+                }
 
-            // If executeTool returns an object with askUserInput, handle it
-            if (toolOutput && toolOutput.askUserInput) {
-                // The objective (with pendingToolBudgetInquiry) would have been set inside executeTool
-                // Add agent's question to chat history
-                objective.chatHistory.push({ speaker: 'agent', content: toolOutput.message });
-                // Save objective with pendingToolBudgetInquiry and new chat history
-                dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
-                return toolOutput; // Return the { askUserInput, message } object directly
+                // Check types and enums for provided arguments
+                for (const argName in toolCall.arguments) {
+                    if (schemaParams[argName]) {
+                        const schemaParam = schemaParams[argName];
+                        const argValue = toolCall.arguments[argName];
+                        const expectedType = schemaParam.type;
+                        let actualType = typeof argValue;
+
+                        // More precise type checking
+                        if (expectedType === 'array') {
+                            if (!Array.isArray(argValue)) {
+                                validationErrors.push(`Argument '${argName}' must be an array, but got ${actualType}.`);
+                            }
+                        } else if (expectedType === 'object') {
+                            if (actualType !== 'object' || argValue === null || Array.isArray(argValue)) {
+                                validationErrors.push(`Argument '${argName}' must be an object, but got ${argValue === null ? 'null' : (Array.isArray(argValue) ? 'array' : actualType)}.`);
+                            }
+                        } else if (actualType !== expectedType) {
+                            // This check is for primitive types like string, number, boolean
+                             if (expectedType === 'number' && isNaN(argValue)){ // specifically check if it's NaN for type number
+                                validationErrors.push(`Argument '${argName}' must be a valid number, but got NaN.`);
+                             } else if (expectedType !== 'array' && expectedType !== 'object' && actualType !== expectedType) { // re-check to avoid duplicating array/object messages
+                                validationErrors.push(`Argument '${argName}' must be a ${expectedType}, but got ${actualType}.`);
+                            }
+                        }
+
+                        // Enum checking
+                        if (schemaParam.enum && Array.isArray(schemaParam.enum) && !schemaParam.enum.includes(argValue)) {
+                            validationErrors.push(`Argument '${argName}' must be one of [${schemaParam.enum.join(', ')}], but got '${argValue}'.`);
+                        }
+                    } else {
+                        // Optional: Warn about extraneous arguments not in schema. For now, we allow them as they might be handled by the tool itself.
+                        // validationErrors.push(`Unexpected argument '${argName}' not defined in tool schema.`);
+                    }
+                }
             }
 
-            // Add tool call and tool output to chat history for context
-            // This simple string representation can be improved with structured messages later.
-            objective.chatHistory.push({
-                speaker: 'system', // Or 'tool_executor'
-                content: `Called tool ${toolCall.name} with arguments ${JSON.stringify(toolCall.arguments)}. Output: ${toolOutput}`
-            });
-
-            // Send tool output back to Gemini for summarization/final response for the step
-            const contextForGemini = await getPrompt('agent/tool_output_summary', {
-                toolName: toolCall.name,
-                toolArguments: JSON.stringify(toolCall.arguments),
-                toolOutput: toolOutput,
-                currentStep: currentStep
-            });
-
-            let geminiResponseAfterTool;
-            try {
-                geminiResponseAfterTool = await geminiService.fetchGeminiResponse(contextForGemini, objective.chatHistory, projectAssets);
-            } catch (error) {
-                console.error("Agent: Error fetching summary from Gemini after tool call:", error);
-                finalMessageForStep = `Error getting summary after tool execution: ${error.message}. Tool output was: ${toolOutput}`;
+            if (validationErrors.length > 0) {
+                finalMessageForStep = `Tool argument validation failed for '${toolCall.name}': ${validationErrors.join(' ')}`;
                 objective.chatHistory.push({ speaker: 'system', content: finalMessageForStep });
-                // Proceed to next step despite summarization error
-                objective.plan.currentStepIndex = currentStepIndex + 1;
-                objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
-                dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
-                dataStore.updateObjective(objective);
-                return {
-                    message: finalMessageForStep,
-                    currentStep: currentStepIndex,
-                    stepDescription: currentStep,
-                    planStatus: objective.plan.status
-                };
-            }
-
-            if (typeof geminiResponseAfterTool === 'object' && geminiResponseAfterTool.tool_call) {
-                console.error("Agent: Gemini requested another tool call immediately after a tool execution. This is not yet supported in this flow.");
-                finalMessageForStep = "Error: Agent tried to chain tool calls in a way that's not yet supported.";
-                objective.chatHistory.push({ speaker: 'system', content: finalMessageForStep });
-            } else if (typeof geminiResponseAfterTool === 'string') {
-                finalMessageForStep = geminiResponseAfterTool;
-                // Add Gemini's summary to chat history as the agent's response for the step
-                objective.chatHistory.push({ speaker: 'agent', content: finalMessageForStep });
+                // Skip executeTool and proceed to update objective state and return.
+                // The existing logic after this 'else' block (or outside the 'if (toolCall)' block)
+                // already handles finalMessageForStep for chat history and plan updates.
             } else {
-                 console.error("Agent: Unexpected response type from Gemini after tool execution:", geminiResponseAfterTool);
-                 finalMessageForStep = "Error: Agent received an unexpected internal response after tool execution.";
-                 objective.chatHistory.push({ speaker: 'system', content: finalMessageForStep });
-            }
+                // Proceed with executeTool call (existing logic)
+                const toolOutput = await executeTool(toolCall.name, toolCall.arguments, objective.projectId); // Objective is in scope
+                console.log(`Agent: Tool ${toolCall.name} executed. Output:`, toolOutput);
+
+                // If executeTool returns an object with askUserInput, handle it
+                if (toolOutput && toolOutput.askUserInput) {
+                    // The objective (with pendingToolBudgetInquiry) would have been set inside executeTool
+                    // Add agent's question to chat history
+                    objective.chatHistory.push({ speaker: 'agent', content: toolOutput.message });
+                    // Save objective with pendingToolBudgetInquiry and new chat history
+                    dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
+                    return toolOutput; // Return the { askUserInput, message } object directly
+                }
+
+                // Add tool call and tool output to chat history for context
+                // This simple string representation can be improved with structured messages later.
+                objective.chatHistory.push({
+                    speaker: 'system', // Or 'tool_executor'
+                    content: `Called tool ${toolCall.name} with arguments ${JSON.stringify(toolCall.arguments)}. Output: ${toolOutput}`
+                });
+
+                // Send tool output back to Gemini for summarization/final response for the step
+                const contextForGemini = await getPrompt('agent/tool_output_summary', {
+                    toolName: toolCall.name,
+                    toolArguments: JSON.stringify(toolCall.arguments),
+                    toolOutput: toolOutput,
+                    currentStep: currentStep
+                });
+
+                let geminiResponseAfterTool;
+                try {
+                    geminiResponseAfterTool = await geminiService.fetchGeminiResponse(contextForGemini, objective.chatHistory, projectAssets);
+                } catch (error) {
+                    console.error("Agent: Error fetching summary from Gemini after tool call:", error);
+                    finalMessageForStep = `Error getting summary after tool execution: ${error.message}. Tool output was: ${toolOutput}`;
+                    objective.chatHistory.push({ speaker: 'system', content: finalMessageForStep });
+                    // Proceed to next step despite summarization error
+                    objective.plan.currentStepIndex = currentStepIndex + 1;
+                    objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
+                    dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
+                    dataStore.updateObjective(objective);
+                    return {
+                        message: finalMessageForStep,
+                        currentStep: currentStepIndex,
+                        stepDescription: currentStep,
+                        planStatus: objective.plan.status
+                    };
+                }
+
+                if (typeof geminiResponseAfterTool === 'object' && geminiResponseAfterTool.tool_call) {
+                    console.error("Agent: Gemini requested another tool call immediately after a tool execution. This is not yet supported in this flow.");
+                    finalMessageForStep = "Error: Agent tried to chain tool calls in a way that's not yet supported.";
+                    objective.chatHistory.push({ speaker: 'system', content: finalMessageForStep });
+                } else if (typeof geminiResponseAfterTool === 'string') {
+                    finalMessageForStep = geminiResponseAfterTool;
+                    // Add Gemini's summary to chat history as the agent's response for the step
+                    objective.chatHistory.push({ speaker: 'agent', content: finalMessageForStep });
+                } else {
+                     console.error("Agent: Unexpected response type from Gemini after tool execution:", geminiResponseAfterTool);
+                     finalMessageForStep = "Error: Agent received an unexpected internal response after tool execution.";
+                     objective.chatHistory.push({ speaker: 'system', content: finalMessageForStep });
+                }
+            } // This closes the 'else' for validationErrors.length > 0
         }
     } else if (typeof stepExecutionResult === 'string') {
         // Gemini provided a direct response for the step, no tool call needed.
