@@ -231,6 +231,11 @@ function getObjectivesByProjectId(projectId) {
     return objectives.filter(o => o.projectId === projectId);
 }
 
+function getAllObjectives() {
+    console.log('[dataStore.getAllObjectives] Returning all objectives.');
+    return [...objectives]; // Return a shallow copy of the objectives array
+}
+
 function findObjectiveById(objectiveId) {
     return objectives.find(o => o.id === objectiveId);
 }
@@ -291,6 +296,7 @@ module.exports = {
     deleteProjectById,
     addObjective,
     getObjectivesByProjectId,
+    getAllObjectives, // Added getAllObjectives
     findObjectiveById,
     updateObjectiveById,
     deleteObjectiveById,
