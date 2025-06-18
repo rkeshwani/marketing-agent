@@ -230,6 +230,20 @@ const toolSchemas = [
       },
       required: ["content"]
     }
+  },
+  {
+    name: "browse_web",
+    description: "Browses a web page and returns its content.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "The URL of the web page to browse."
+        }
+      },
+      required: ["url"]
+    }
   }
 ];
 
