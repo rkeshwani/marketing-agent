@@ -10,6 +10,7 @@ const fsSync = require('fs'); // For createWriteStream and existsSync
 const path = require('path');
 const http = require('http');
 const https = require('https');
+const { getPrompt } = require('./promptProvider'); // Import getPrompt
 const linkedinService = require('./linkedinService'); // Added for LinkedIn
 
 
@@ -369,7 +370,221 @@ async function execute_google_ads_create_ad_from_config(adConfig, projectId) {
 }
 
 // --- Dynamic Asset Script Execution ---
-// (To be added in the next step)
+
+/**
+ * Downloads a file from a given URL to a specified output path.
+ * @param {string} url The URL of the file to download.
+ * @param {string} outputPath The local path to save the downloaded file.
+ * @returns {Promise<void>}
+ * @private
+ */
+async function _downloadFile(url, outputPath) {
+    console.log(`Downloading ${url} to ${outputPath}`);
+    try {
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`Failed to download file: ${response.status} ${response.statusText} from ${url}`);
+        }
+        const fileStream = fsSync.createWriteStream(outputPath);
+        await new Promise((resolve, reject) => {
+            response.body.pipe(fileStream);
+            response.body.on("error", reject);
+            fileStream.on("finish", resolve);
+        });
+        console.log(`File downloaded successfully: ${outputPath}`);
+    } catch (error) {
+        console.error(`Error in _downloadFile downloading ${url}:`, error);
+        // Attempt to clean up partially downloaded file
+        try {
+            if (fsSync.existsSync(outputPath)) {
+                await fs.unlink(outputPath);
+            }
+        } catch (cleanupError) {
+            console.error(`Error cleaning up file ${outputPath} after download failure:`, cleanupError);
+        }
+        throw error; // Re-throw the original download error
+    }
+}
+
+
+async function execute_dynamic_asset_script(params, projectId) {
+    console.log(`Executing execute_dynamic_asset_script for project ${projectId}`, params);
+    const { asset_id, modification_prompt, output_asset_name_suggestion, output_asset_type } = params;
+
+    if (!asset_id || !modification_prompt || !output_asset_type) {
+        return JSON.stringify({ success: false, error: "Missing required parameters: asset_id, modification_prompt, or output_asset_type." });
+    }
+
+    const project = global.dataStore.findProjectById(projectId);
+    if (!project) {
+        return JSON.stringify({ success: false, error: `Project with ID ${projectId} not found.` });
+    }
+
+    const inputAsset = project.assets.find(a => a.assetId === asset_id || a.id === asset_id);
+    if (!inputAsset) {
+        return JSON.stringify({ success: false, error: `Input asset with ID ${asset_id} not found in project ${projectId}.` });
+    }
+
+    if (!inputAsset.url) {
+        return JSON.stringify({ success: false, error: `Input asset ${asset_id} has no downloadable URL.` });
+    }
+
+    // Ensure TEMP_ASSET_DIR exists
+    if (!fsSync.existsSync(microsandboxService.TEMP_ASSET_DIR)) {
+        await fs.mkdir(microsandboxService.TEMP_ASSET_DIR, { recursive: true });
+    }
+
+    const inputAssetExtension = path.extname(inputAsset.name || inputAsset.url || 'asset');
+    const localInputAssetPath = path.join(microsandboxService.TEMP_ASSET_DIR, `input_${projectId}_${asset_id}${inputAssetExtension}`);
+
+    try {
+        await _downloadFile(inputAsset.url, localInputAssetPath);
+    } catch (downloadError) {
+        console.error(`Failed to download input asset ${inputAsset.url}:`, downloadError);
+        return JSON.stringify({ success: false, error: `Failed to download input asset: ${downloadError.message}` });
+    }
+
+    const inputFilenameInSandbox = `input${inputAssetExtension}`;
+    // Determine output extension based on output_asset_type or suggestion, fallback to input asset's extension
+    let outputAssetExtension = path.extname(output_asset_name_suggestion || '');
+    if (!outputAssetExtension) { // if no extension in suggestion
+        // Basic mapping from type to extension (can be expanded)
+        const typeToExt = { 'image': '.jpg', 'video': '.mp4', 'audio': '.mp3', 'text': '.txt' };
+        outputAssetExtension = typeToExt[output_asset_type] || inputAssetExtension;
+    }
+    const outputFilenameInSandbox = `output${outputAssetExtension}`;
+
+    const input_asset_info = `a ${inputAsset.type} file named '${inputAsset.name || inputFilenameInSandbox}' (MIME type: ${inputAsset.mimeType || 'unknown'})`;
+
+    let pythonCode;
+    try {
+        const scriptGenPrompt = await getPrompt('services/geminiService/generate_asset_modification_script', {
+            modification_prompt: modification_prompt,
+            input_asset_info: input_asset_info,
+            input_filename_in_sandbox: inputFilenameInSandbox,
+            output_filename_in_sandbox: outputFilenameInSandbox
+        });
+
+        console.log(`ToolExecutorService: Generated prompt for Python script generation for asset ${asset_id}: ${scriptGenPrompt.substring(0, 200)}...`);
+        const geminiResponse = await geminiService.fetchGeminiResponse(scriptGenPrompt, [], [inputAsset]);
+
+        if (typeof geminiResponse === 'string') {
+            pythonCode = geminiResponse;
+            // Basic check to remove potential markdown backticks if Gemini includes them
+            pythonCode = pythonCode.replace(/^```python\n/, '').replace(/\n```$/, '').trim();
+            console.log(`ToolExecutorService: Received Python script from Gemini for asset ${asset_id}:\n${pythonCode.substring(0, 500)}...`);
+        } else if (geminiResponse && geminiResponse.tool_call) {
+            console.error(`ToolExecutorService: Gemini unexpectedly tried to call a tool while generating Python script for asset ${asset_id}. Response:`, geminiResponse);
+            return JSON.stringify({ success: false, error: "Failed to generate asset modification script: Gemini returned an unexpected tool_call response." });
+        } else {
+            console.error(`ToolExecutorService: Unexpected response type from Gemini for Python script generation for asset ${asset_id}. Response:`, geminiResponse);
+            return JSON.stringify({ success: false, error: "Failed to generate asset modification script: Gemini returned an unexpected response type." });
+        }
+    } catch (error) {
+        console.error(`ToolExecutorService: Error generating Python script via Gemini for asset ${asset_id}:`, error);
+        return JSON.stringify({ success: false, error: `Failed to generate asset modification script: ${error.message}` });
+    }
+
+    let sandboxResult;
+    try {
+        sandboxResult = await microsandboxService.runPythonScriptInSandbox(
+            pythonCode, // Use the Gemini-generated code
+            localInputAssetPath,
+            inputFilenameInSandbox,
+            outputFilenameInSandbox
+        );
+
+        if (sandboxResult.success && sandboxResult.outputFilePath) {
+            const newAssetId = `${output_asset_type.slice(0,3)}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+            let newAssetName = output_asset_name_suggestion;
+            if (!newAssetName) {
+                const baseName = (inputAsset.name || `asset_${asset_id}`).substring(0, (inputAsset.name || `asset_${asset_id}`).lastIndexOf('.'));
+                newAssetName = `${baseName}_modified${outputAssetExtension}`;
+            } else {
+                // Ensure suggested name has the correct extension
+                if (path.extname(newAssetName) !== outputAssetExtension) {
+                    newAssetName = newAssetName.substring(0, newAssetName.lastIndexOf('.') > 0 ? newAssetName.lastIndexOf('.') : newAssetName.length) + outputAssetExtension;
+                }
+            }
+
+            const newAsset = {
+                assetId: newAssetId,
+                id: newAssetId, // for consistency if some parts use id
+                name: newAssetName,
+                type: output_asset_type,
+                url: sandboxResult.outputFilePath, // Placeholder: This is a local path, will need to be a URL after upload
+                description: `Asset modified from ${asset_id} using prompt: "${modification_prompt}"`,
+                modificationPrompt: modification_prompt,
+                originalAssetId: asset_id,
+                projectId: projectId,
+                createdAt: new Date().toISOString(),
+                tags: ['dynamic-script-output', output_asset_type],
+                isTemporary: true, // Indicates the URL is a local path and needs to be made permanent
+            };
+
+            // Vectorization step
+            try {
+                const textForEmbedding = `${newAsset.name} - Modified via script: ${newAsset.modificationPrompt}. Original asset ID: ${newAsset.originalAssetId}. Tags: ${newAsset.tags.join(', ')}`;
+                console.log(`ToolExecutorService: Generating embedding for asset ${newAsset.assetId}. Text: "${textForEmbedding.substring(0,100)}..."`);
+                const embeddingResult = await vectorService.generateEmbedding(textForEmbedding);
+                if (embeddingResult && embeddingResult.vector) {
+                    await vectorService.addAssetVector(projectId, newAsset.assetId, embeddingResult.vector);
+                    console.log(`ToolExecutorService: Embedding generated and stored for dynamically created asset ${newAsset.assetId}`);
+                    // Optionally merge tags from embeddingResult if they exist and are meaningful
+                    if (embeddingResult.tags && Array.isArray(embeddingResult.tags) && embeddingResult.tags.length > 0) {
+                        const originalTagCount = newAsset.tags.length;
+                        newAsset.tags = [...new Set([...newAsset.tags, ...embeddingResult.tags])];
+                        if (newAsset.tags.length > originalTagCount) {
+                             console.log(`ToolExecutorService: Merged tags from embedding into asset ${newAsset.assetId}. New tags: ${newAsset.tags.join(', ')}`);
+                        }
+                    }
+                } else {
+                    console.warn(`ToolExecutorService: Failed to generate or store embedding for dynamically created asset ${newAsset.assetId}. Embedding result issue.`);
+                }
+            } catch (embedError) {
+                console.error(`ToolExecutorService: Error during embedding for dynamically created asset ${newAsset.assetId}:`, embedError);
+                // Do not fail the entire asset creation if only embedding fails.
+            }
+
+            if (!project.assets) project.assets = [];
+            project.assets.push(newAsset); // newAsset (potentially with updated tags) is pushed here
+            global.dataStore.updateProjectById(projectId, { assets: project.assets }); // Persists newAsset including any tag changes
+             // TODO: In a real scenario, upload sandboxResult.outputFilePath to a persistent storage and get a public URL.
+            // For now, url will be the local path, which is only valid within the server environment.
+
+            return JSON.stringify({
+                success: true,
+                new_asset_id: newAssetId,
+                new_asset_name: newAssetName,
+                local_path: sandboxResult.outputFilePath, // Exposing local path for now
+                message: `Dynamic script executed. New asset '${newAssetName}' created locally. Path: ${sandboxResult.outputFilePath}`
+            });
+        } else {
+            console.error("Sandbox execution failed or did not produce output file:", sandboxResult);
+            return JSON.stringify({
+                success: false,
+                error: sandboxResult.error || "Sandbox execution failed or output file not found.",
+                stdout: sandboxResult.stdout,
+                stderr: sandboxResult.stderr
+            });
+        }
+    } catch (error) {
+        console.error("Error during dynamic asset script execution:", error);
+        return JSON.stringify({ success: false, error: `Error executing dynamic asset script: ${error.message}` });
+    } finally {
+        try {
+            if (fsSync.existsSync(localInputAssetPath)) {
+                await fs.unlink(localInputAssetPath);
+                console.log(`Cleaned up temporary input file: ${localInputAssetPath}`);
+            }
+        } catch (cleanupError) {
+            console.error(`Error cleaning up temporary input file ${localInputAssetPath}:`, cleanupError);
+        }
+        // Output file from sandbox (sandboxResult.outputFilePath) is not cleaned here
+        // as it's the "result" but it's temporary and local to the server.
+        // A separate mechanism would be needed to manage these temporary output files if not uploaded.
+    }
+}
 
 
 module.exports = {
@@ -384,6 +599,7 @@ module.exports = {
     execute_google_ads_create_campaign_from_config,
     execute_google_ads_create_ad_group_from_config,
     execute_google_ads_create_ad_from_config,
+    execute_dynamic_asset_script, // Export new function
     execute_post_to_linkedin // Added LinkedIn post execution
 };
 

@@ -1,0 +1,12 @@
+Project Name: "{{projectName}}"
+Project Description: "{{projectDescription}}"
+
+Based on the project name and description, please generate 3-5 questions to help me understand the project's context more deeply.
+These questions should cover:
+- The project's relation to my overall brand.
+- Any specific branding standards or guidelines I need to adhere to.
+- The desired voice and tone for the project's communications.
+- The specific feeling or emotion the project aims to evoke in the target audience.
+
+Return ONLY a JSON string array of the questions. For example:
+["Question 1?", "Question 2?", "What is the primary goal of this project?"]

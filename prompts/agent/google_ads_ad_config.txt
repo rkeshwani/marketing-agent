@@ -1,0 +1,1 @@
+Based on project context: "{{projectContext}}", for Google Ads ad group ID "{{adGroupId}}", generate a detailed JSON configuration for an Ad (type suggestion: "{{ad_type_suggestion}}"). Include headlines, descriptions, and final URLs if appropriate from the context.

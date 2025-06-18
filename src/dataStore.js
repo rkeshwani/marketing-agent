@@ -123,6 +123,7 @@ function addProject(projectData) {
     newProject.assets = projectData.assets || [];
 
     projects.push(newProject);
+    console.log(`[dataStore.addProject] Added project "${newProject.name}" with id "${newProject.id}". Current project count: ${projects.length}. Project IDs: ${JSON.stringify(projects.map(p=>p.id))}`);
     saveDataToFile(); // Save after adding a new project
     return newProject;
 }
@@ -132,7 +133,18 @@ function getAllProjects() {
 }
 
 function findProjectById(projectId) {
-    return projects.find(p => p.id === projectId);
+    console.log(`[dataStore.findProjectById] Searching for projectId: "${projectId}"`);
+    if (!Array.isArray(projects)) {
+        console.error('[dataStore.findProjectById] CRITICAL: projects variable is not an array! Value:', projects);
+        return null; // Prevent TypeError from .find()
+    }
+    const project = projects.find(p => p.id === projectId);
+    if (project) {
+        console.log(`[dataStore.findProjectById] Found project with id: "${projectId}"`);
+    } else {
+        console.log(`[dataStore.findProjectById] Project NOT FOUND with id: "${projectId}". Current project IDs in store: ${JSON.stringify(projects.map(p=>p.id))}`);
+    }
+    return project;
 }
 
 function updateProjectById(projectId, updateData) {
@@ -192,10 +204,12 @@ function deleteProjectById(projectId) {
 
 // --- Objective Functions ---
 function addObjective(objectiveData, projectId) {
+    console.log(`[dataStore.addObjective] Attempting to add objective for projectId: "${projectId}"`);
     // Objective class is already required at the top
-    const project = findProjectById(projectId);
+    const project = findProjectById(projectId); // This will now log details from findProjectById
     if (!project) {
-        console.error("Project not found for adding objective");
+        // Error already logged by findProjectById if not found, but can add context here if needed
+        console.error(`[dataStore.addObjective] Prerequisite project check failed for projectId: "${projectId}". Objective not added.`);
         return null; // Or throw an error
     }
     // Corrected constructor arguments: projectId, title, brief
@@ -215,6 +229,11 @@ function addObjective(objectiveData, projectId) {
 
 function getObjectivesByProjectId(projectId) {
     return objectives.filter(o => o.projectId === projectId);
+}
+
+function getAllObjectives() {
+    console.log('[dataStore.getAllObjectives] Returning all objectives.');
+    return [...objectives]; // Return a shallow copy of the objectives array
 }
 
 function findObjectiveById(objectiveId) {
@@ -275,9 +294,9 @@ module.exports = {
     findProjectById,
     updateProjectById,
     deleteProjectById,
-    // addObjective, // Original addObjective might be removed or renamed if new signature is preferred
-    addObjective, // Keep new addObjective or decide on a naming convention
+    addObjective,
     getObjectivesByProjectId,
+    getAllObjectives, // Added getAllObjectives
     findObjectiveById,
     updateObjectiveById,
     deleteObjectiveById,

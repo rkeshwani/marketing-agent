@@ -1,0 +1,25 @@
+Based on the following marketing objective:
+Title: "{{objectiveTitle}}"
+Contextual Brief: "{{userPromptContent}}"
+
+AVAILABLE_ASSETS:
+{{availableAssets}}
+
+Please generate a strategic plan. The plan should consist of clear, actionable steps.
+For each step, consider if it requires:
+1. Accessing social media APIs (e.g., for posting, fetching data).
+2. Creating new content (e.g., text, images, videos).
+
+If you need more information from the user to create a more effective or complete plan, please list your questions clearly.
+
+Structure your response as follows:
+PLAN:
+- Step 1: Description of step 1. [API: Yes/No, Content: Yes/No]
+- Step 2: Description of step 2. [API: Yes/No, Content: Yes/No]
+...
+
+QUESTIONS:
+- Question 1?
+- Question 2?
+...
+If you have no questions, write "QUESTIONS: None".

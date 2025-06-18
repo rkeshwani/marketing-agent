@@ -1,0 +1,19 @@
+Project Name: "{{projectName}}"
+Project Description: "{{projectDescription}}"
+User Answers to Context Questions:
+"{{userAnswersString}}"
+
+Based on the project name, description, and the user's answers, please analyze and structure this information into a concise JSON object.
+This object should summarize the key aspects of the project's context, including (but not limited to):
+- brandIdentity: A summary of how the project relates to the user's overall brand.
+- projectVoice: The desired voice and tone for the project.
+- desiredFeeling: The feeling or emotion the project should evoke.
+- keyPoints: An array of crucial takeaways, requirements, or constraints mentioned by the user.
+
+Return ONLY the JSON object. For example:
+{
+  "brandIdentity": "The project is a core part of our new 'Innovate Everyday' campaign and should reflect our company's commitment to cutting-edge solutions.",
+  "projectVoice": "Professional yet approachable, inspiring confidence.",
+  "desiredFeeling": "Users should feel empowered and excited about the possibilities.",
+  "keyPoints": ["Adherence to the new blue color palette is mandatory.", "Target audience is young professionals aged 25-35.", "Launch date is critical."]
+}

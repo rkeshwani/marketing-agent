@@ -1019,17 +1019,30 @@ app.post('/api/projects/:projectId/objectives', (req, res) => {
         return res.status(400).json({ error: 'Objective title is required' });
     }
 
-    const project = dataStore.findProjectById(projectId);
+    console.log(`[server.js POST objective] Received projectId from req.params: "${projectId}"`);
+    const project = dataStore.findProjectById(projectId); // dataStore.findProjectById will log its own details
     if (!project) {
+        // findProjectById already logs the failure, this specific log might be redundant
+        // console.log(`[server.js POST objective] Initial project check FAILED for id: "${projectId}".`);
         return res.status(404).json({ error: 'Project not found to add objective to' });
     }
+    console.log(`[server.js POST objective] Initial project check passed for id: "${projectId}". Proceeding to call dataStore.addObjective.`);
 
     try {
-        const newObjective = new Objective(projectId, title, brief);
-        const savedObjective = dataStore.addObjective(newObjective);
+        // Pass objective data (title, brief) and the validated project.id to dataStore.addObjective
+        // The Objective instance will be created within dataStore.addObjective
+        const objectiveData = { title, brief };
+        const savedObjective = dataStore.addObjective(objectiveData, project.id);
+
+        if (!savedObjective) {
+            // This case might occur if dataStore.addObjective returns null (e.g., if its internal project check failed, though unlikely here as we checked 'project' already)
+            // Or if the Objective constructor within dataStore.addObjective had an issue.
+            console.error(`[server.js POST objective] dataStore.addObjective returned null for projectId: ${project.id}`);
+            return res.status(500).json({ error: 'Failed to create objective due to an internal dataStore issue.' });
+        }
         res.status(201).json(savedObjective);
     } catch (error) {
-        console.error(`Error creating objective for project ${projectId}:`, error);
+        console.error(`Error creating objective for project ${project.id}:`, error);
         res.status(500).json({ error: 'Failed to create objective' });
     }
 });
@@ -1146,29 +1159,7 @@ app.post('/api/objectives/:objectiveId/chat', async (req, res) => {
 });
 
 // === Original Chat API endpoint (to be DEPRECATED or modified later if needed) ===
-// app.post('/api/chat', async (req, res) => { ... }); // Keep it for now but it won't be used by new UI
-app.post('/api/chat', async (req, res) => {
-  try {
-    const { userInput, chatHistory } = req.body;
-
-    if (!userInput) {
-      return res.status(400).json({ error: 'userInput is required' });
-    }
-
-    // chatHistory can be optional or defaults to an empty array if not provided
-    const history = chatHistory || [];
-
-    // For this generic /api/chat endpoint, there's no objectiveId.
-    // The getAgentResponse now requires it. This endpoint is problematic.
-    // For now, I'll pass null or undefined, and getAgentResponse will handle it by returning an error message.
-    // This endpoint should likely be removed or re-thought if objective-specific context is always required.
-    const agentResponse = await getAgentResponse(userInput, history, null);
-    res.json({ response: agentResponse });
-  } catch (error) {
-    console.error('API Error:', error);
-    res.status(500).json({ error: 'Failed to get agent response' });
-  }
-});
+// The /api/chat endpoint has been removed as it's redundant and not objective-specific.
 
 // All other GET requests not handled by the static middleware or API routes
 // should serve the main client application (index.html).
@@ -1179,7 +1170,6 @@ app.get(/^\/(?!api).*/, (req, res) => {
 
 app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}`);
-  console.log('PWA client should be accessible at http://localhost:${port}/');
 
   // Start the scheduler
   console.log(`Starting scheduler to check for tasks every ${SCHEDULER_INTERVAL_MS / 1000} seconds.`);

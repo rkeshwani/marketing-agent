@@ -1,0 +1,1 @@
+Based on the project context: "{{projectContext}}", and a request to create a Google Ads campaign (name suggestion: "{{campaign_name_suggestion}}", type suggestion: "{{campaign_type_suggestion}}"), generate a detailed JSON configuration object for the Google Ads API Campaign resource. Identify any critical missing information. For budget, explicitly state 'BUDGET_NEEDED'.

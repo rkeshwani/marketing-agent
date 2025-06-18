@@ -1,0 +1,10 @@
+PLAN:
+- Step 1: Define target audience for {{title}}. [API: No, Content: Yes]
+- Step 2: Develop key messaging. [API: No, Content: Yes]
+- Step 3: Create 3 pieces of initial content. [API: Yes, Content: Yes]
+- Step 4: Schedule content posting. [API: Yes, Content: No]
+
+QUESTIONS:
+- What is the primary platform for this campaign?
+- Are there any existing brand guidelines to follow?
+- What is the budget for content creation, if any?
