@@ -201,6 +201,7 @@ async function executeTool(toolName, toolArguments, projectId, objective) {
  * @returns {Promise<string|Object>} A promise that resolves to the agent's response, which can be a string or an object if asking for user input.
  */
 async function getAgentResponse(userInput, chatHistory, objectiveId) {
+  let finalMessageForStep; // Declare finalMessageForStep here
   console.log(`Agent: Received input - "${userInput}" for objective ID - ${objectiveId}`);
 
   if (!objectiveId) {
@@ -388,6 +389,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
         stepExecutionResult = await geminiService.executePlanStep(currentStep, objective.chatHistory, projectAssets);
     } catch (error) {
         console.error(`Agent: Error executing plan step "${currentStep}":`, error);
+        // finalMessageForStep is declared at the function's start
         finalMessageForStep = `Error processing step "${currentStep}": ${error.message}`;
         objective.chatHistory.push({ speaker: 'system', content: finalMessageForStep });
         // No tool_call if executePlanStep itself failed, so directly update plan and return
@@ -402,7 +404,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
         };
     }
 
-    let finalMessageForStep;
+    // finalMessageForStep is declared at the function's start
 
     if (stepExecutionResult && typeof stepExecutionResult === 'object' && stepExecutionResult.tool_call) {
         const toolCall = stepExecutionResult.tool_call;
