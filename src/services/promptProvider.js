@@ -40,7 +40,7 @@ async function getPrompt(promptKey, contextData = {}) {
             if (Object.hasOwnProperty.call(contextData, key)) {
                 const placeholder = `{{${key}}}`;
                 // Using a global regex to replace all occurrences of the placeholder
-                processedPrompt = processedPrompt.replace(new RegExp(placeholder.replace(/[.*+?^${}()|[\]\]/g, '\\$&'), 'g'), contextData[key]);
+                processedPrompt = processedPrompt.replace(new RegExp(placeholder.replace('/[.*+?^${}()|[\]\]/g', '\\$&'), 'g'), contextData[key]);
             }
         }
 

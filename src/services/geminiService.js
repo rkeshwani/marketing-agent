@@ -120,9 +120,9 @@ async function fetchGeminiResponse(userInput, chatHistory, projectAssets = []) {
     console.log('GeminiService (fetchGeminiResponse): Sending to Gemini:', JSON.stringify(apiRequestBody, null, 2));
 
 
-    const response = await axios.post(GEMINI_API_ENDPOINT, apiRequestBody, {
+    const response = await axios.post(`${GEMINI_API_ENDPOINT}:generateContent?key=${GEMINI_API_KEY}`, apiRequestBody, {
       headers: {
-        'Authorization': `Bearer ${GEMINI_API_KEY}`, // Corrected, was `config.GEMINI_API_KEY` which is the same
+        // 'Authorization': `Bearer ${GEMINI_API_KEY}`, // Corrected, was `config.GEMINI_API_KEY` which is the same
         'Content-Type': 'application/json'
       }
     });

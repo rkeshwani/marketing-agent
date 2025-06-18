@@ -239,7 +239,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
         objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
 
         // Use dataStore consistently
-        dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory, null);
+        dataStore.updateObjectiveById(objectiveId, objective);
 
         return {
             message: errorMessage,
@@ -264,7 +264,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
           // Advance step even on error to avoid loop, or have a specific error state
           objective.plan.currentStepIndex = (pendingInfo.originalToolCall.stepIndex !== undefined ? pendingInfo.originalToolCall.stepIndex : objective.plan.currentStepIndex) + 1;
           objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
-          dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory, null);
+          dataStore.updateObjectiveById(objectiveId, objective);
           return {
               message: "Error: Could not retrieve the saved campaign details to proceed with budget. Please try creating the campaign again.",
               currentStep: objective.plan.currentStepIndex -1,
@@ -303,7 +303,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
       // The step is now considered complete, advance plan
       objective.plan.currentStepIndex = (pendingInfo.originalToolCall.stepIndex !== undefined ? pendingInfo.originalToolCall.stepIndex : objective.plan.currentStepIndex) + 1;
       objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
-      dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory, objective.pendingToolBudgetInquiry);
+      dataStore.updateObjectiveById(objectiveId, objective);
 
 
       return {
@@ -389,8 +389,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
         // No tool_call if executePlanStep itself failed, so directly update plan and return
         objective.plan.currentStepIndex = currentStepIndex + 1;
         objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
-        dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
-        dataStore.updateObjective(objective);
+        dataStore.updateObjectiveById(objectiveId, objective);
         return {
             message: finalMessageForStep,
             currentStep: currentStepIndex,
@@ -478,7 +477,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
                     // Add agent's question to chat history
                     objective.chatHistory.push({ speaker: 'agent', content: toolOutput.message });
                     // Save objective with pendingToolBudgetInquiry and new chat history
-                    dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
+                    dataStore.updateObjectiveById(objectiveId, objective);
                     return toolOutput; // Return the { askUserInput, message } object directly
                 }
 
@@ -507,7 +506,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
                     // Proceed to next step despite summarization error
                     objective.plan.currentStepIndex = currentStepIndex + 1;
                     objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
-                    dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
+                    dataStore.updateObjectiveById(objectiveId, objective);
                     dataStore.updateObjective(objective);
                     return {
                         message: finalMessageForStep,
@@ -547,7 +546,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
     objective.plan.currentStepIndex = currentStepIndex + 1; // Increment step index
     objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress'; // Update status if all steps done
 
-    dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory);
+    dataStore.updateObjectiveById(objectiveId, objective);
     // Ensure the full objective is updated in the data store
     dataStore.updateObjective(objective);
 
@@ -760,22 +759,7 @@ async function initializeAgent(objectiveId) {
     // Save the updated objective
     // Ensuring consistency with the 5-argument version used elsewhere.
     // Note: objective.originalPlan is now also part of the objective being saved if it's recurring
-    const updatedObjective = dataStore.updateObjectiveById(
-        objectiveId,
-        objective.title,
-        objective.brief,
-        objective.plan,
-        objective.chatHistory,
-        // Potentially add other fields if updateObjectiveById is extended like in other parts of the codebase
-        // For now, assuming dataStore handles persistence of the whole objective object passed to it or identified by ID.
-        // Let's ensure the full objective object is updated if originalPlan was added.
-        // If updateObjectiveById only updates specific fields, this needs adjustment.
-        // Based on its usage, it seems to update specific fields, but the objective object itself
-        // is modified in memory and then passed, so new fields like originalPlan should persist
-        // if the dataStore method saves the whole object or is aware of this new field.
-        // Let's assume it saves the modified objective object.
-    );
-     dataStore.updateObjective(objective); // Make sure the whole objective is saved
+    const updatedObjective = dataStore.updateObjectiveById(objectiveId, objective);
 
     if (!updatedObjective) {
         // This case should ideally not be reached if findObjectiveById succeeded and dataStore is consistent
