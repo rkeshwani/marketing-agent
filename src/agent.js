@@ -386,7 +386,12 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
     // Call the service function to execute the step (might return text or tool_call)
     let stepExecutionResult;
     try {
-        stepExecutionResult = await geminiService.executePlanStep(currentStep, objective.chatHistory, projectAssets);
+        // Prepare objectiveDetails
+        const objectiveDetails = {
+            title: objective.title || "Not available", // Ensure fallback if undefined
+            brief: objective.brief || "Not available"  // Ensure fallback if undefined
+        };
+        stepExecutionResult = await geminiService.executePlanStep(currentStep, objective.chatHistory, projectAssets, objectiveDetails);
     } catch (error) {
         console.error(`Agent: Error executing plan step "${currentStep}":`, error);
         // finalMessageForStep is declared at the function's start

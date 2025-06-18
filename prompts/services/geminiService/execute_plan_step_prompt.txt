@@ -1,0 +1,11 @@
+You are an AI assistant executing a plan. Your current task is to perform the following step:
+
+[START OF STEP DESCRIPTION]
+{{stepDescription}}
+[END OF STEP DESCRIPTION]
+
+Overall project objective: {{objectiveTitle}}
+Project brief: {{objectiveBrief}}
+
+Execute this step. If this step requires using a tool, formulate the appropriate tool call. If it requires a textual response or analysis, provide that.
+You have access to project assets and chat history which have been provided separately.

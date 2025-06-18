@@ -252,7 +252,7 @@ module.exports = {
   generatePlanForObjective,
   generateProjectContextQuestions,
   structureProjectContextAnswers,
-  executePlanStep,
+  executePlanStep, // Ensure this is still exported correctly
 };
 
 // --- Function: executePlanStep ---
@@ -261,14 +261,23 @@ module.exports = {
  *
  * @param {string} stepDescription The description of the plan step to execute.
  * @param {Array<Object>} chatHistory The current chat history.
- * @param {Array<Object>} projectAssets Assets related to the project (optional).
- * @returns {Promise<string>} A promise that resolves to the API response for the step.
+ * @param {Array<Object>} [projectAssets=[]] Optional array of project assets for context.
+ * @param {Object} [objectiveDetails={}] Optional object containing objective title and brief.
+ * @returns {Promise<string|Object>} A promise that resolves to the API response for the step.
  */
-async function executePlanStep(stepDescription, chatHistory, projectAssets = []) {
+async function executePlanStep(stepDescription, chatHistory, projectAssets = [], objectiveDetails = {}) { // Modified signature
   console.log('GeminiService (executePlanStep): Received step for execution -', stepDescription);
-  // This function simply leverages fetchGeminiResponse for the execution of a step.
-  // In a more complex system, this might involve different types of actions based on step content.
-  return fetchGeminiResponse(stepDescription, chatHistory, projectAssets);
+  console.log('GeminiService (executePlanStep): Objective details - Title:', objectiveDetails.title, 'Brief:', objectiveDetails.brief);
+
+  // Construct the detailed prompt for step execution
+  const executionPrompt = await getPrompt('services/geminiService/execute_plan_step_prompt', {
+      stepDescription: stepDescription,
+      objectiveTitle: objectiveDetails.title || "No overall objective title provided",
+      objectiveBrief: objectiveDetails.brief || "No project brief provided"
+  });
+
+  // Pass the constructed prompt as userInput to fetchGeminiResponse
+  return fetchGeminiResponse(executionPrompt, chatHistory, projectAssets);
 }
 
 // --- New Function: generateProjectContextQuestions ---
