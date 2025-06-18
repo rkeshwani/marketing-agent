@@ -30,6 +30,10 @@ async function executeTool(toolName, toolArguments, projectId, objective) {
             return await toolExecutorService.execute_facebook_create_post(toolArguments, projectId);
         case 'tiktok_create_post':
             return await toolExecutorService.execute_tiktok_create_post(toolArguments, projectId);
+        case 'browse_web':
+            const url = toolArguments && toolArguments.url ? toolArguments.url : "";
+            // Note: projectId is passed for consistency, though execute_browse_web_tool might not use it directly yet.
+            return await toolExecutorService.execute_browse_web_tool(url, projectId);
         case 'post_to_linkedin': {
             const project = dataStore.findProjectById(projectId);
             if (!project || !project.linkedinAccessToken || !project.linkedinUserID) {
