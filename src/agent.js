@@ -1,11 +1,12 @@
 // Import services
+const dataStore = require('./dataStore');
 const geminiService = require('./services/geminiService');
 const { getToolSchema } = require('./services/toolRegistryService');
 const { getPrompt } = require('./services/promptProvider');
 const toolExecutorService = require('./services/toolExecutorService'); // Import the new service
 
 // --- Tool Execution Dispatcher ---
-async function executeTool(toolName, toolArguments, projectId) {
+async function executeTool(toolName, toolArguments, projectId, objective) {
     console.log(`Agent: executeTool dispatcher for ${toolName}, args: `, toolArguments);
     switch (toolName) {
         case 'semantic_search_assets':
@@ -30,7 +31,7 @@ async function executeTool(toolName, toolArguments, projectId) {
         case 'tiktok_create_post':
             return await toolExecutorService.execute_tiktok_create_post(toolArguments, projectId);
         case 'post_to_linkedin': {
-            const project = global.dataStore.findProjectById(projectId);
+            const project = dataStore.findProjectById(projectId);
             if (!project || !project.linkedinAccessToken || !project.linkedinUserID) {
                 return JSON.stringify({ error: "LinkedIn account not connected or credentials missing for this project." });
             }
@@ -45,7 +46,7 @@ async function executeTool(toolName, toolArguments, projectId) {
         // Google Ads Scaffold Tools
         case 'google_ads_create_campaign_scaffold': {
             console.log("Agent: Initiating google_ads_create_campaign_scaffold...");
-            const project = global.dataStore.findProjectById(projectId);
+            const project = dataStore.findProjectById(projectId);
             const projectContext = project ? project.description || project.name : "No project context available.";
 
             const geminiPromptForConfig = await getPrompt('agent/google_ads_campaign_config', {
@@ -106,7 +107,7 @@ async function executeTool(toolName, toolArguments, projectId) {
         }
         case 'google_ads_create_ad_group_scaffold': {
             console.log("Agent: Initiating google_ads_create_ad_group_scaffold...");
-            const project = global.dataStore.findProjectById(projectId);
+            const project = dataStore.findProjectById(projectId);
             const projectContext = project ? project.description || project.name : "No project context available.";
             const campaignId = toolArguments.campaign_id;
 
@@ -143,7 +144,7 @@ async function executeTool(toolName, toolArguments, projectId) {
         }
         case 'google_ads_create_ad_scaffold': {
             console.log("Agent: Initiating google_ads_create_ad_scaffold...");
-            const project = global.dataStore.findProjectById(projectId);
+            const project = dataStore.findProjectById(projectId);
             const projectContext = project ? project.description || project.name : "No project context available.";
             const adGroupId = toolArguments.ad_group_id;
 
@@ -237,8 +238,8 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
         objective.plan.currentStepIndex = (pendingInfo.originalToolCall.stepIndex !== undefined ? pendingInfo.originalToolCall.stepIndex : objective.plan.currentStepIndex) + 1;
         objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
 
-        // Use global.dataStore consistently if that's the pattern
-        global.dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory, null);
+        // Use dataStore consistently
+        dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory, null);
 
         return {
             message: errorMessage,
@@ -263,7 +264,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
           // Advance step even on error to avoid loop, or have a specific error state
           objective.plan.currentStepIndex = (pendingInfo.originalToolCall.stepIndex !== undefined ? pendingInfo.originalToolCall.stepIndex : objective.plan.currentStepIndex) + 1;
           objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
-          global.dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory, null);
+          dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory, null);
           return {
               message: "Error: Could not retrieve the saved campaign details to proceed with budget. Please try creating the campaign again.",
               currentStep: objective.plan.currentStepIndex -1,
@@ -302,7 +303,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
       // The step is now considered complete, advance plan
       objective.plan.currentStepIndex = (pendingInfo.originalToolCall.stepIndex !== undefined ? pendingInfo.originalToolCall.stepIndex : objective.plan.currentStepIndex) + 1;
       objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
-      global.dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory, objective.pendingToolBudgetInquiry);
+      dataStore.updateObjectiveById(objectiveId, objective.title, objective.brief, objective.plan, objective.chatHistory, objective.pendingToolBudgetInquiry);
 
 
       return {
@@ -468,7 +469,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
                 // already handles finalMessageForStep for chat history and plan updates.
             } else {
                 // Proceed with executeTool call (existing logic)
-                const toolOutput = await executeTool(toolCall.name, toolCall.arguments, objective.projectId); // Objective is in scope
+                const toolOutput = await executeTool(toolCall.name, toolCall.arguments, objective.projectId, objective); // Objective is in scope
                 console.log(`Agent: Tool ${toolCall.name} executed. Output:`, toolOutput);
 
                 // If executeTool returns an object with askUserInput, handle it
