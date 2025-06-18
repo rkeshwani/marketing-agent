@@ -351,8 +351,13 @@ document.addEventListener('DOMContentLoaded', () => {
                  if (currentStepLi) currentStepLi.classList.add('current-step');
             }
             planStatusMessage.textContent = 'Plan execution in progress.';
-            approvePlanBtn.style.display = 'none';
-            chatInputArea.style.display = 'flex'; // Keep chat active
+            if (approvePlanBtn) approvePlanBtn.style.display = 'none';
+            if (chatInputArea) chatInputArea.style.display = 'flex';
+            if (userInputElement) {
+                userInputElement.disabled = false;
+                userInputElement.placeholder = "Type your message...";
+            }
+            if (sendButton) sendButton.disabled = false;
 
         } else if (plan.status === 'completed') {
             allStepItems.forEach(item => {
@@ -365,7 +370,12 @@ document.addEventListener('DOMContentLoaded', () => {
             // userInputElement.placeholder = "All plan steps completed.";
             // userInputElement.disabled = true;
             // sendButton.disabled = true;
-            chatInputArea.style.display = 'flex'; // Or hide it: chatInputArea.style.display = 'none';
+            if (chatInputArea) chatInputArea.style.display = 'flex';
+            if (userInputElement) {
+                userInputElement.disabled = false;
+                userInputElement.placeholder = "Type your message...";
+            }
+            if (sendButton) sendButton.disabled = false;
         }
 
 
@@ -384,16 +394,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (plan.status === 'pending_approval') {
             planStatusMessage.textContent = 'This plan is awaiting your approval.';
-            approvePlanBtn.style.display = 'inline-block';
-            chatInputArea.style.display = 'none';
-            planDisplaySection.style.display = 'block';
+            if (approvePlanBtn) approvePlanBtn.style.display = 'inline-block';
+            if (chatInputArea) chatInputArea.style.display = 'none';
+            if (planDisplaySection) planDisplaySection.style.display = 'block';
             clearContainer(chatOutput); // Clear any "loading chat" messages if plan is pending
             addMessageToUI('agent', "Please review the proposed plan above. Approve it to start working on this objective.");
         } else if (plan.status === 'approved') {
             planStatusMessage.textContent = 'Plan approved! Ready to start or continue.';
-            approvePlanBtn.style.display = 'none';
-            chatInputArea.style.display = 'flex';
-            planDisplaySection.style.display = 'block';
+            if (approvePlanBtn) approvePlanBtn.style.display = 'none';
+            if (chatInputArea) chatInputArea.style.display = 'flex';
+            if (userInputElement) {
+                userInputElement.disabled = false;
+                userInputElement.placeholder = "Type your message...";
+            }
+            if (sendButton) sendButton.disabled = false;
+            if (planDisplaySection) planDisplaySection.style.display = 'block';
             fetchChatHistory(selectedObjectiveId); // Load chat history for approved plan
             // Highlighting for 'approved' status (likely first step is current if index is 0)
             // This is now handled by the 'in_progress' logic if currentStepIndex > 0,
@@ -410,9 +425,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } else { // No plan, or other statuses not explicitly handled for display (e.g. 'user_modified', 'error')
             planStatusMessage.textContent = 'Plan status: ' + (plan.status || 'Not available');
-            planDisplaySection.style.display = 'block'; // Still show plan section for consistency
-            chatInputArea.style.display = 'none'; // Hide chat if plan status is not conducive
-            approvePlanBtn.style.display = 'none'; // Hide approve button for other statuses
+            if (planDisplaySection) planDisplaySection.style.display = 'block'; // Still show plan section for consistency
+            if (chatInputArea) chatInputArea.style.display = 'none'; // Hide chat if plan status is not conducive
+            if (approvePlanBtn) approvePlanBtn.style.display = 'none'; // Hide approve button for other statuses
             if (!plan.status && selectedObjectiveId) {
                  addMessageToUI('agent', "No plan information or status. Attempting to initialize...");
             }
@@ -1047,15 +1062,161 @@ showChatSection();
     // fetchObjectivesForProject and renderObjectivesInProject.
     // The old handleCreateObjectiveSubmit and its form are currently disabled.
 
+    // --- Markdown Parsing Function ---
+    function simpleMarkdownToHtml(markdownText) {
+        if (typeof markdownText !== 'string') {
+            markdownText = String(markdownText);
+        }
+
+        // 1. Escape basic HTML special characters
+        let html = markdownText
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+
+        // 2. Code blocks (```...```)
+        html = html.replace(/```([\s\S]*?)```/g, (match, code) => {
+            // Escape HTML special chars inside code block again, in case they were added by other rules
+            // or if the initial escape didn't catch something specific to code blocks.
+            const escapedCode = code
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+            return `<pre><code>${escapedCode.trim()}</code></pre>`;
+        });
+
+        // 3. Inline code (`...`)
+        html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+        // 4. Links ([text](url))
+        html = html.replace(/\[([^\]]+)]\(([^)]+)\)/g, (match, text, url) => {
+            // Basic URL validation (http, https)
+            if (url.startsWith('http://') || url.startsWith('https://')) {
+                return `<a href="${url}" target="_blank">${text}</a>`;
+            }
+            return match; // Return original match if URL is not valid
+        });
+
+        // 5. Bold (**text** or __text__)
+        html = html.replace(/\*\*([^\*]+)\*\*/g, '<strong>$1</strong>');
+        html = html.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+
+        // 6. Italics (*text* or _text_)
+        // Use negative lookarounds to avoid matching parts of bold patterns like **
+        // (This can be tricky; for a "simple" parser, sometimes order of operations helps more)
+        // Let's try a simpler approach first, relying on order (bold first).
+        html = html.replace(/(?<!\*)\*([^\*]+)\*(?!\*)/g, '<em>$1</em>');
+        html = html.replace(/(?<!_)_([^_]+)_(?!_)/g, '<em>$1</em>');
+
+
+        // 7. Lists (unordered and ordered) - This is a more complex line-by-line part
+        const lines = html.split('\n');
+        let inList = false;
+        let listType = null; // 'ul' or 'ol'
+        let listHtml = '';
+        const outputLines = [];
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            let itemMatch = null;
+            let currentListType = null;
+
+            if (line.startsWith('- ') || line.startsWith('* ')) {
+                itemMatch = line.substring(2);
+                currentListType = 'ul';
+            } else {
+                const orderedMatch = line.match(/^(\d+)\. (.*)/);
+                if (orderedMatch) {
+                    itemMatch = orderedMatch[2];
+                    currentListType = 'ol';
+                }
+            }
+
+            if (itemMatch !== null) { // Current line is a list item
+                if (!inList) { // Starting a new list
+                    inList = true;
+                    listType = currentListType;
+                    listHtml = `<li>${itemMatch}</li>`;
+                } else if (listType === currentListType) { // Continuing current list
+                    listHtml += `<li>${itemMatch}</li>`;
+                } else { // Switching list type (e.g., ul to ol) or non-list item ends previous list
+                    outputLines.push(`<${listType}>${listHtml}</${listType}>`);
+                    listType = currentListType;
+                    listHtml = `<li>${itemMatch}</li>`;
+                    // inList remains true
+                }
+            } else { // Current line is not a list item
+                if (inList) { // Ending a list
+                    outputLines.push(`<${listType}>${listHtml}</${listType}>`);
+                    inList = false;
+                    listHtml = '';
+                    listType = null;
+                }
+                outputLines.push(line); // Add the non-list line
+            }
+        }
+        if (inList) { // Ensure any remaining list is closed
+            outputLines.push(`<${listType}>${listHtml}</${listType}>`);
+        }
+        html = outputLines.join('\n'); // Rejoin lines, some of which are now list blocks
+
+        // 8. Paragraphs/Newlines
+        // Wrap non-block elements in <p> tags.
+        // This is simplified: assumes blocks like <pre>, <ul>, <ol> are on their own lines.
+        // And that other text should be wrapped in paragraphs.
+        // Further split by double newlines for paragraphs, then single newlines for <br>.
+        html = html.split(/\n\s*\n/).map(paragraph => {
+            if (paragraph.startsWith('<pre>') || paragraph.startsWith('<ul>') || paragraph.startsWith('<ol>') || paragraph.startsWith('<li>')) {
+                return paragraph; // Don't wrap existing blocks in <p>
+            }
+            if (paragraph.trim() === '') return '';
+            return `<p>${paragraph.replace(/\n/g, '<br>')}</p>`;
+        }).join('');
+
+
+        // Final pass to clean up any stray <br> next to block elements from paragraph logic
+        // This can get complex; the above paragraph logic is a simplification.
+        // For example, a <br> might appear before a <ul> if the list wasn't separated by a double newline.
+        // html = html.replace(/<br>\s*(<(ul|ol|pre|li))/gi, '$1');
+        // html = html.replace(/(<\/(ul|ol|pre|li)>)\s*<br>/gi, '$1');
+        // html = html.replace(/<p><\/p>/g, ''); // Remove empty paragraphs
+
+        return html;
+    }
+
+
     // --- Chat Functions ---
     function addMessageToUI(speaker, text) {
         const messageDiv = document.createElement('div');
         // Standardize to 'user' and 'agent' for CSS class consistency
         const role = (speaker && speaker.toLowerCase() === 'user') ? 'user' : 'agent';
         messageDiv.classList.add('message', `${role}-message`);
-        messageDiv.textContent = text;
+
+        if (role === 'agent') {
+            messageDiv.innerHTML = simpleMarkdownToHtml(text);
+        } else {
+            messageDiv.textContent = text;
+        }
+
         chatOutput.appendChild(messageDiv);
         chatOutput.scrollTop = chatOutput.scrollHeight;
+
+        // Added conditional block for chat input visibility
+        if (role === 'agent' && chatSection && chatSection.style.display === 'block') {
+            const objective = objectives.find(o => o.id === selectedObjectiveId);
+            if (!objective || !objective.plan || objective.plan.status !== 'pending_approval') {
+                if (chatInputArea) chatInputArea.style.display = 'flex';
+                if (userInputElement) {
+                    userInputElement.disabled = false;
+                    userInputElement.placeholder = "Type your message...";
+                }
+                if (sendButton) sendButton.disabled = false;
+            }
+        }
     }
 
     async function fetchChatHistory(objectiveId) {

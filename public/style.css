@@ -736,3 +736,51 @@ footer {
     }
 
 }
+
+/* Markdown specific styles */
+.message code {
+    background-color: #f0f0f0;
+    padding: 0.2em 0.4em;
+    margin: 0;
+    font-size: 85%;
+    border-radius: 3px;
+    font-family: monospace;
+}
+.message pre {
+    background-color: #f0f0f0;
+    padding: 10px;
+    border-radius: 4px;
+    overflow-x: auto;
+    display: block; /* Ensure pre takes full width available in message bubble */
+    word-wrap: normal; /* Prevent long lines from breaking if possible, rely on overflow-x */
+}
+.message pre code {
+    padding: 0;
+    margin: 0;
+    font-size: inherit; /* Code inside pre should inherit pre's font size */
+    background-color: transparent;
+    border-radius: 0;
+}
+.message ul, .message ol {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+    padding-left: 2em; /* Indent lists */
+}
+.message li {
+    margin-bottom: 0.2em;
+}
+.message a {
+    color: #007bff; /* Standard link color */
+    text-decoration: underline;
+}
+.message a:hover {
+    color: #0056b3;
+}
+/* Ensure paragraphs inside messages have some spacing if using <p> tags */
+.message p {
+    margin-top: 0;
+    margin-bottom: 0.5em;
+}
+.message p:last-child {
+    margin-bottom: 0;
+}
