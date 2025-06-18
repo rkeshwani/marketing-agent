@@ -1029,11 +1029,20 @@ app.post('/api/projects/:projectId/objectives', (req, res) => {
     console.log(`[server.js POST objective] Initial project check passed for id: "${projectId}". Proceeding to call dataStore.addObjective.`);
 
     try {
-        const newObjective = new Objective(projectId, title, brief);
-        const savedObjective = dataStore.addObjective(newObjective);
+        // Pass objective data (title, brief) and the validated project.id to dataStore.addObjective
+        // The Objective instance will be created within dataStore.addObjective
+        const objectiveData = { title, brief };
+        const savedObjective = dataStore.addObjective(objectiveData, project.id);
+
+        if (!savedObjective) {
+            // This case might occur if dataStore.addObjective returns null (e.g., if its internal project check failed, though unlikely here as we checked 'project' already)
+            // Or if the Objective constructor within dataStore.addObjective had an issue.
+            console.error(`[server.js POST objective] dataStore.addObjective returned null for projectId: ${project.id}`);
+            return res.status(500).json({ error: 'Failed to create objective due to an internal dataStore issue.' });
+        }
         res.status(201).json(savedObjective);
     } catch (error) {
-        console.error(`Error creating objective for project ${projectId}:`, error);
+        console.error(`Error creating objective for project ${project.id}:`, error);
         res.status(500).json({ error: 'Failed to create objective' });
     }
 });
