@@ -87,21 +87,27 @@ async function fetchGeminiResponse(userInput, chatHistory, projectAssets = []) {
 
     const apiRequestBody = {
         contents: [
-            // Simple conversion for now, assuming chatHistory is [{role: 'user'/'model', parts: [{text: '...'}]}]
-            ...chatHistory,
+            ...chatHistory.map(item => {
+                // If item already has 'role' and 'parts', assume it's correctly formatted
+                if (item.role && item.parts) {
+                    return item;
+                }
+                let role = 'user'; // Default role
+                if (item.speaker === 'agent' || item.speaker === 'system') {
+                    role = 'model';
+                } else if (item.speaker === 'user') {
+                    role = 'user';
+                }
+                // Ensure content is not undefined
+                return { role: role, parts: [{ text: item.content || '' }] };
+            }),
             { role: "user", parts: [{ text: userInput }] }
         ],
-        // Assuming `tools` from getAllToolSchemas() are already in the format Gemini expects for function declarations
-        // e.g. { function_declarations: [...] } or needs to be wrapped.
-        // Based on typical Gemini API, it's often { tools: [{ functionDeclarations: tools }] }
-        // For now, sending as received from getAllToolSchemas, wrapped in an object.
-        // This will likely need refinement based on actual API behavior.
-         tools: [{ functionDeclarations: tools }], // This is a common structure
-        // projectAssets might be sent as part of the prompt, or if they are files, using multi-part requests or inline data.
-        // This part is underspecified for a generic Gemini call without knowing asset types.
-        // For now, projectAssets are not explicitly included in `apiRequestBody.contents` unless they are part of `userInput`.
+        tools: [{ functionDeclarations: tools }],
     };
+
     // Add projectAssets information to the prompt if they exist
+    // This logic is placed *after* the chatHistory transformation.
     if (projectAssets && projectAssets.length > 0) {
         let assetsText = "\n\nProject Assets Context:\n";
         projectAssets.forEach(asset => {
@@ -109,13 +115,17 @@ async function fetchGeminiResponse(userInput, chatHistory, projectAssets = []) {
             // Do not include asset.content directly in the prompt unless it's text and brief.
         });
         // Find the last user message and append to it, or add a new user message.
-        if (apiRequestBody.contents.length > 0 && apiRequestBody.contents[apiRequestBody.contents.length-1].role === "user") {
-            apiRequestBody.contents[apiRequestBody.contents.length-1].parts[0].text += assetsText;
+        // Ensure there's always a user message to append to, or create one.
+        const lastContent = apiRequestBody.contents[apiRequestBody.contents.length - 1];
+        if (lastContent && lastContent.role === "user" && lastContent.parts && lastContent.parts.length > 0) {
+            lastContent.parts[0].text += assetsText;
         } else {
-            apiRequestBody.contents.push({role: "user", parts: [{text: "Context about project assets:" + assetsText}]});
+            // If the last message isn't a user message or parts are missing (unlikely after mapping),
+            // or if contents is empty (also unlikely if userInput is always added),
+            // add a new user message with asset context.
+            apiRequestBody.contents.push({ role: "user", parts: [{ text: "Context about project assets:" + assetsText }] });
         }
     }
-
 
     console.log('GeminiService (fetchGeminiResponse): Sending to Gemini:', JSON.stringify(apiRequestBody, null, 2));
 
