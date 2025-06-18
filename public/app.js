@@ -428,7 +428,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         addMessageToUI('agent', 'Loading objective details and plan...'); // Indicate loading
         try {
-            const objectiveResponse = await fetch(`/api/objectives/${objectiveId}`);
+            const objectiveResponse = await fetch(`api/objectives/${objectiveId}`);
             if (!objectiveResponse.ok) {
                 if (objectiveResponse.status === 404) {
                     addMessageToUI('agent', 'Objective not found. Cannot retrieve or initialize plan.');
