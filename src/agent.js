@@ -390,7 +390,6 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
         objective.plan.currentStepIndex = currentStepIndex + 1;
         objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
         dataStore.updateObjectiveById(objectiveId, objective);
-        dataStore.updateObjective(objective);
         return {
             message: finalMessageForStep,
             currentStep: currentStepIndex,
