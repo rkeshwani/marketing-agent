@@ -716,7 +716,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const errorData = await response.json().catch(() => ({ error: 'Failed to create objective. Please try again.' }));
                 throw new Error(errorData.error || `Server error: ${response.status}`);
             }
-            // const newObjective = await response.json(); // newObjective is returned by server
+            const newObjective = await response.json(); // newObjective is returned by server
 
             form.reset();
             if (formContainer) formContainer.remove(); // Remove the entire cloned form container
@@ -745,6 +745,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
             }
+
+selectedProjectId = projectId; // projectId is available in this function's scope
+selectedObjectiveId = newObjective.id;
+
+// Ensure the project item in the UI is active to show its objectives list
+const projectLiShowChat = document.querySelector(`.project-item[data-project-id="${projectId}"]`);
+if (projectLiShowChat && !projectLiShowChat.classList.contains('active')) {
+    projectLiShowChat.classList.add('active');
+    // If toggleProjectObjectives was responsible for more than just fetching,
+    // and also for visual state that's not covered by just adding 'active',
+    // that logic might need to be revisited or called here.
+    // For now, assuming adding 'active' and then fetching objectives is enough.
+}
+
+// Refresh objectives for this project to ensure the new one is in the list UI
+// This is already called a few lines below, but we might want to ensure it completes
+// *before* showChatSection, or that showChatSection can handle a slightly stale list.
+// For now, we'll rely on the existing call to fetchObjectivesForProject.
+
+showChatSection();
         } catch (error) {
             const errorElement = form.querySelector('.form-error-message') || document.createElement('p');
             errorElement.className = 'form-error-message error-message';
