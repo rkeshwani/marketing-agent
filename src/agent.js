@@ -554,8 +554,6 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
 
     dataStore.updateObjectiveById(objectiveId, objective);
     // Ensure the full objective is updated in the data store
-    dataStore.updateObjective(objective);
-
 
     if (objective.plan.status === 'completed' && objective.plan.currentStepIndex >= objective.plan.steps.length) {
         console.log(`Agent: Plan instance completed for objective ${objectiveId}.`);
