@@ -728,6 +728,7 @@ async function initializeAgent(objectiveId) {
     let planData;
     try {
         planData = await geminiService.generatePlanForObjective(objective, projectAssets);
+    // console.log('Debug: planData from geminiService:', JSON.stringify(planData));
     } catch (error) {
         console.error(`Agent: Error generating plan for objective ${objectiveId}:`, error);
         objective.plan.status = 'error_generating_plan';
@@ -737,10 +738,12 @@ async function initializeAgent(objectiveId) {
         throw new Error(`Failed to generate plan: ${error.message}`); // Re-throw to inform caller
     }
     const { planSteps, questions } = planData;
+    // console.log('Debug: planSteps:', JSON.stringify(planSteps), 'questions:', JSON.stringify(questions));
 
     // Update the objective's plan
-    objective.plan.steps = planSteps;
-    objective.plan.questions = questions;
+    // Ensure objective.plan.steps and objective.plan.questions are arrays
+    objective.plan.steps = Array.isArray(planSteps) ? planSteps : [];
+    objective.plan.questions = Array.isArray(questions) ? questions : [];
     objective.plan.status = 'pending_approval'; // Or 'generated_pending_review'
 
     // Handle recurring objectives: store the original plan

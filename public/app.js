@@ -453,45 +453,61 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
             if (currentObjective && currentObjective.plan) {
-                // Check if plan needs initialization based on status or content
-                if (currentObjective.plan.status === 'pending_approval' ||
-                    currentObjective.plan.status === 'approved' ||
-                    currentObjective.plan.status === 'in_progress' ||
-                    currentObjective.plan.status === 'completed') {
-                    renderPlan(currentObjective.plan);
-                    if (currentObjective.plan.status === 'approved' || currentObjective.plan.status === 'in_progress') {
-                        fetchChatHistory(objectiveId); // Also fetch chat history
-                    } else if (currentObjective.plan.status === 'pending_approval') {
-                         addMessageToUI('agent', "Please review the proposed plan above. Approve it to start working on this objective.");
-                    }
-                } else if (!currentObjective.plan.steps || currentObjective.plan.steps.length === 0) {
-                    addMessageToUI('agent', 'Plan is empty or status is unclear. Attempting to initialize...');
+                // Scenario 1: Plan is 'pending_approval' but actually empty (needs generation)
+                if (currentObjective.plan.status === 'pending_approval' &&
+                    (!currentObjective.plan.steps || currentObjective.plan.steps.length === 0)) {
+                    // We can also check questions: && (!currentObjective.plan.questions || currentObjective.plan.questions.length === 0)
+                    // For simplicity, an empty steps array for a pending_approval plan is a strong indicator.
+
+                    addMessageToUI('agent', 'New objective detected. Initializing a plan...');
                     const initResponse = await fetch(`api/objectives/${objectiveId}/initialize-agent`, { method: 'POST' });
                     if (!initResponse.ok) throw new Error(`Failed to initialize plan: ${initResponse.statusText}`);
                     const newObjectiveData = await initResponse.json();
 
                     // Update local objective with new plan
-                    if (objectiveIndex !== -1) objectives[objectiveIndex] = newObjectiveData; else objectives[objectives.length-1] = newObjectiveData;
-                    renderPlan(newObjectiveData.plan);
-                    if (newObjectiveData.plan.status === 'pending_approval') {
-                         addMessageToUI('agent', "Please review the newly initialized plan.");
+                    const objectiveIndex = objectives.findIndex(o => o.id === objectiveId); // Ensure objectiveIndex is still valid/available
+                    if (objectiveIndex !== -1) {
+                        objectives[objectiveIndex] = newObjectiveData;
+                    } else {
+                        // This case should be rare if objectiveData was just fetched and pushed/updated
+                        objectives.push(newObjectiveData);
                     }
-                } else {
-                    // Plan exists but status is not one we explicitly handle for special UI changes (e.g. might be user modified)
+                    renderPlan(newObjectiveData.plan);
+                    // Message for 'pending_approval' (e.g., "Please review...") is handled by renderPlan.
+
+                } else if (currentObjective.plan.status === 'pending_approval' ||
+                           currentObjective.plan.status === 'approved' ||
+                           currentObjective.plan.status === 'in_progress' ||
+                           currentObjective.plan.status === 'completed') {
+                    // Scenario 2: Plan already exists and has content, or its status indicates it's processed.
+                    // This includes 'pending_approval' plans that *do* have steps (already generated).
                     renderPlan(currentObjective.plan);
-                     fetchChatHistory(objectiveId); // Fetch chat for other valid plan states
+                    if (currentObjective.plan.status === 'approved' || currentObjective.plan.status === 'in_progress') {
+                        fetchChatHistory(objectiveId);
+                    }
+                    // Message for 'pending_approval' is handled by renderPlan.
+
+                } else {
+                    // Scenario 3: Plan has an unknown/other status.
+                    // Potentially, if steps are empty here, one might also consider initialization.
+                    // For now, just render what's there.
+                    addMessageToUI('agent', `Plan has status '${currentObjective.plan.status}'. Displaying current plan content.`);
+                    renderPlan(currentObjective.plan);
                 }
             } else {
-                addMessageToUI('agent', 'No plan found. Attempting to initialize a new plan...');
+                // Scenario 4: No plan object at all on currentObjective.
+                addMessageToUI('agent', 'No plan data found for this objective. Attempting to initialize a new plan...');
                 const initResponse = await fetch(`api/objectives/${objectiveId}/initialize-agent`, { method: 'POST' });
                 if (!initResponse.ok) throw new Error(`Failed to initialize plan: ${initResponse.statusText}`);
                 const newObjectiveData = await initResponse.json();
 
-                if (objectiveIndex !== -1) objectives[objectiveIndex] = newObjectiveData; else objectives[objectives.length-1] = newObjectiveData;
-                renderPlan(newObjectiveData.plan);
-                if (newObjectiveData.plan.status === 'pending_approval') {
-                    addMessageToUI('agent', "Please review the newly initialized plan.");
+                const objectiveIndex = objectives.findIndex(o => o.id === objectiveId); // Ensure objectiveIndex is still valid/available
+                if (objectiveIndex !== -1) {
+                    objectives[objectiveIndex] = newObjectiveData;
+                } else {
+                    objectives.push(newObjectiveData);
                 }
+                renderPlan(newObjectiveData.plan);
             }
         } catch (error) {
             console.error('Error in fetchAndDisplayPlan:', error);
