@@ -240,17 +240,22 @@ function findObjectiveById(objectiveId) {
     return objectives.find(o => o.id === objectiveId);
 }
 
-function updateObjectiveById(objectiveId, title, brief, plan) {
-    const objective = findObjectiveById(objectiveId);
-    if (objective) {
-        objective.title = title !== undefined ? title : objective.title;
-        objective.brief = brief !== undefined ? brief : objective.brief;
-        if (plan !== undefined) {
-            objective.plan = plan;
+function updateObjectiveById(objectiveId, objectiveData) {
+    const objectiveToUpdate = findObjectiveById(objectiveId);
+    if (objectiveToUpdate) {
+        // Update only the fields present in objectiveData
+        for (const key in objectiveData) {
+            if (objectiveData.hasOwnProperty(key)) {
+                // Do not update 'id' and 'projectId' if they are part of objectiveData,
+                // as these are typically immutable or managed elsewhere.
+                if (key !== 'id' && key !== 'projectId') {
+                    objectiveToUpdate[key] = objectiveData[key];
+                }
+            }
         }
-        objective.updatedAt = new Date();
+        objectiveToUpdate.updatedAt = new Date();
         saveDataToFile(); // Save after updating an objective
-        return objective;
+        return objectiveToUpdate;
     }
     return null;
 }
