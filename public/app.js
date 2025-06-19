@@ -1305,14 +1305,32 @@ showChatSection();
                     objective.plan = { steps: [], questions: [], status: '', currentStepIndex: 0 };
                 }
 
+                let agentMessageContent = "";
+                if (typeof data.message === 'object' && data.message !== null) {
+                    if (data.message.message && data.message.stepDescription) {
+                        agentMessageContent = `${data.message.stepDescription}\n\n${data.message.message}`;
+                    } else if (data.message.message) {
+                        agentMessageContent = data.message.message;
+                    } else if (data.message.text) {
+                        agentMessageContent = data.message.text;
+                    } else {
+                        agentMessageContent = JSON.stringify(data.message);
+                    }
+                } else if (typeof data.message === 'string') {
+                    agentMessageContent = data.message;
+                } else {
+                    // Fallback for unexpected types or null/undefined if not caught by typeof string
+                    agentMessageContent = String(data.message || "Received an empty or unexpected message content.");
+                }
+
                 if (data.planStatus === 'in_progress') {
-                    addMessageToUI('agent', data.message); // This is the step execution result
+                    addMessageToUI('agent', agentMessageContent); // Use processed message
                     objective.plan.status = 'in_progress';
                     // data.currentStep is the index of the step *just processed*
                     objective.plan.currentStepIndex = data.currentStep + 1;
                     renderPlan(objective.plan);
                 } else if (data.planStatus === 'completed') {
-                    addMessageToUI('agent', data.message); // "All plan steps completed!"
+                    addMessageToUI('agent', agentMessageContent); // Use processed message
                     objective.plan.status = 'completed';
                     objective.plan.currentStepIndex = objective.plan.steps.length;
                     renderPlan(objective.plan);
@@ -1321,13 +1339,25 @@ showChatSection();
                     // userInputElement.placeholder = "Objective completed!";
                     // sendButton.disabled = true;
                 } else {
-                    // Fallback for other planStatuses if any, or just treat as regular message
-                    const agentResponse = data.response || data.message || "Received an update with unhandled plan status.";
+                    // Fallback for other planStatuses.
+                    // agentMessageContent is already prepared based on data.message.
+                    // If data.response is preferred here, similar logic would be needed.
+                    // Assuming data.message is the primary source for this path.
+                    const agentResponse = data.response || agentMessageContent || "Received an update with unhandled plan status.";
                     addMessageToUI('agent', agentResponse);
                 }
             } else { // Standard chat message without plan status
-                const agentResponse = data.response; // Assuming 'response' for regular chat
-                addMessageToUI('agent', agentResponse);
+                let agentResponseContent = "";
+                if (typeof data.response === 'object' && data.response !== null) {
+                    // For data.response, if it's an object, stringify it as its structure is not specified for special formatting.
+                    // Or attempt to find a 'message' or 'text' property as a common fallback.
+                    agentResponseContent = data.response.message || data.response.text || JSON.stringify(data.response);
+                } else if (typeof data.response === 'string') {
+                    agentResponseContent = data.response;
+                } else {
+                    agentResponseContent = String(data.response || "Received an empty or unexpected response.");
+                }
+                addMessageToUI('agent', agentResponseContent);
             }
 
             // Optional: Add to local currentChatHistory if needed, but server is source of truth.
