@@ -1197,9 +1197,21 @@ showChatSection();
         messageDiv.classList.add('message', `${role}-message`);
 
         if (role === 'agent') {
-            messageDiv.innerHTML = simpleMarkdownToHtml(text);
+            let processedText;
+            if (typeof text === 'object' && text !== null) {
+                if (text.message && text.stepDescription) {
+                    processedText = `${text.stepDescription}\n\n${text.message}`;
+                } else if (text.message) {
+                    processedText = text.message;
+                } else {
+                    processedText = JSON.stringify(text);
+                }
+            } else {
+                processedText = String(text || ''); // Handles null, undefined, or existing strings
+            }
+            messageDiv.innerHTML = simpleMarkdownToHtml(processedText);
         } else {
-            messageDiv.textContent = text;
+            messageDiv.textContent = text; // User messages are expected to be plain text
         }
 
         chatOutput.appendChild(messageDiv);
