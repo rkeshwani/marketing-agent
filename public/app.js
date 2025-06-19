@@ -36,6 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendButton = document.getElementById('send-button');
     const chatOutput = document.getElementById('chat-output');
     const chatInputArea = document.getElementById('chat-input-area'); // Added
+    const agentDraftWpPostBtn = document.getElementById('agent-draft-wp-post-btn');
 
     // Plan Display Elements
     const planDisplaySection = document.getElementById('plan-display-section');
@@ -62,6 +63,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const submitContextAnswersBtn = document.getElementById('submit-context-answers-btn');
     const closeContextModalBtn = document.getElementById('close-context-modal-btn'); // Optional, ensure it exists in HTML
     const contextAnswersForm = document.getElementById('context-answers-form'); // Ensure this form wraps questions and submit button
+
+    // WordPress Drafts DOM Elements
+    const wordpressDraftsSection = document.getElementById('wordpress-drafts-section');
+    const selectedProjectNameForWpDraftsElement = document.getElementById('selected-project-name-for-wp-drafts');
+    const wpDraftsListContainer = document.getElementById('wp-drafts-list-container');
+    const backToProjectsFromWpDraftsButton = document.getElementById('back-to-projects-from-wp-drafts-button');
 
 
     // --- State ---
@@ -131,6 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Main Content: chat hidden, assets hidden.
         if (chatSection) chatSection.style.display = 'none';
         if (assetsSection) assetsSection.style.display = 'none';
+        if (wordpressDraftsSection) wordpressDraftsSection.style.display = 'none';
 
         if (projectContextModal) projectContextModal.style.display = 'none';
 
@@ -154,6 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (projectsSection) {
             setupFormToggle('create-project-form-container', 'Create New Project', projectsSection);
         }
+        if (agentDraftWpPostBtn) agentDraftWpPostBtn.style.display = 'none';
     }
 
     // showObjectivesSection is effectively removed/replaced by nesting logic.
@@ -168,6 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Main Content: chat visible, assets hidden.
         if (chatSection) chatSection.style.display = 'block';
         if (assetsSection) assetsSection.style.display = 'none';
+        if (wordpressDraftsSection) wordpressDraftsSection.style.display = 'none';
 
         userInputElement.value = '';
         clearContainer(chatOutput);
@@ -183,11 +193,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 selectedObjectiveTitleElement.textContent = objective ? objective.title : "Objective";
             }
             await fetchAndDisplayPlan(selectedObjectiveId);
+
+            // Control visibility of "Draft WP Post" button
+            if (project && project.wordpressUrl && agentDraftWpPostBtn) {
+                agentDraftWpPostBtn.style.display = 'inline-block';
+            } else if (agentDraftWpPostBtn) {
+                agentDraftWpPostBtn.style.display = 'none';
+            }
+
         } else {
             displayError("No objective selected for chat.", chatOutput, true);
             // No simple "showObjectivesSection" to go back to in the old sense.
             // Clear main content as a fallback.
             if (chatSection) chatSection.style.display = 'none';
+            if (agentDraftWpPostBtn) agentDraftWpPostBtn.style.display = 'none';
         }
     }
 
@@ -636,6 +655,21 @@ document.addEventListener('DOMContentLoaded', () => {
             addObjectiveBtn.dataset.projectId = project.id;
             actionsDiv.appendChild(addObjectiveBtn);
 
+            // WordPress Settings Button
+            const wordpressSettingsBtn = document.createElement('button');
+            wordpressSettingsBtn.textContent = 'WordPress Settings';
+            wordpressSettingsBtn.classList.add('wordpress-settings-btn');
+            wordpressSettingsBtn.dataset.projectId = project.id;
+            actionsDiv.appendChild(wordpressSettingsBtn);
+
+            // View WP Drafts Button
+            const viewWpDraftsBtn = document.createElement('button');
+            viewWpDraftsBtn.textContent = 'View WP Drafts';
+            viewWpDraftsBtn.classList.add('view-wp-drafts-btn');
+            viewWpDraftsBtn.dataset.projectId = project.id;
+            viewWpDraftsBtn.dataset.projectName = project.name; // For setting header
+            actionsDiv.appendChild(viewWpDraftsBtn);
+
             li.appendChild(actionsDiv);
 
 
@@ -707,10 +741,180 @@ document.addEventListener('DOMContentLoaded', () => {
                 projectLi.appendChild(clonedFormContainer); // Append to the project LI
                 const titleInput = clonedFormContainer.querySelector('#objective-title');
                 if (titleInput) titleInput.focus();
+            } else if (target.classList.contains('wordpress-settings-btn')) {
+                event.stopPropagation();
+                const projectId = target.dataset.projectId;
+                const projectLiElement = target.closest('.project-item');
+                toggleWordPressSettingsForm(projectId, projectLiElement);
+            } else if (target.classList.contains('save-wordpress-creds-btn')) {
+                event.stopPropagation();
+                const projectId = target.dataset.projectId;
+                const projectLiElement = target.closest('.project-item');
+                const form = projectLiElement.querySelector('.wordpress-settings-form');
+                if (form) {
+                    const url = form.querySelector(`#wordpress-url-${projectId}`).value;
+                    const username = form.querySelector(`#wordpress-username-${projectId}`).value;
+                    const appPassword = form.querySelector(`#wordpress-app-password-${projectId}`).value;
+                    const statusElement = form.querySelector('.wordpress-creds-status');
+                    handleSaveWordpressCredentials(projectId, url, username, appPassword, statusElement);
+                }
+            } else if (target.classList.contains('view-wp-drafts-btn')) {
+                event.stopPropagation();
+                selectedProjectId = target.dataset.projectId;
+                if (selectedProjectNameForWpDraftsElement) { // Ensure element exists
+                    selectedProjectNameForWpDraftsElement.textContent = target.dataset.projectName;
+                }
+                showWordPressDraftsSection();
             }
             // The main project item click (for navigation) is handled by the listener on the `li` itself.
         });
     }
+
+function showWordPressDraftsSection() {
+    if (!wordpressDraftsSection) return;
+
+    if (projectsSection) projectsSection.style.display = 'block'; // Keep sidebar
+    if (chatSection) chatSection.style.display = 'none';
+    if (assetsSection) assetsSection.style.display = 'none';
+    wordpressDraftsSection.style.display = 'block';
+
+    if (agentDraftWpPostBtn) agentDraftWpPostBtn.style.display = 'none';
+
+    if (selectedProjectId) {
+        // Project name is set by the 'View WP Drafts' button click in renderProjects
+        fetchAndRenderWordPressDrafts(selectedProjectId);
+    } else {
+        displayError("No project selected. Please go back and select a project.", wpDraftsListContainer, true);
+        showProjectsSection(); // Fallback
+    }
+}
+
+async function fetchAndRenderWordPressDrafts(projectId) {
+    if (!wpDraftsListContainer) return;
+    clearContainer(wpDraftsListContainer);
+    wpDraftsListContainer.innerHTML = '<p>Loading drafts...</p>';
+
+    try {
+        const response = await fetch(`/api/projects/${projectId}/wordpress/drafts`);
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: `Failed to fetch drafts: ${response.statusText}` }));
+            throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+        const drafts = await response.json();
+        clearContainer(wpDraftsListContainer);
+
+        if (!drafts || drafts.length === 0) {
+            wpDraftsListContainer.innerHTML = '<p>No WordPress drafts found for this project.</p>';
+            return;
+        }
+
+        const ul = document.createElement('ul');
+        ul.classList.add('wp-drafts-list');
+        drafts.forEach(draft => {
+            const li = document.createElement('li');
+            li.classList.add('wp-draft-item');
+            li.innerHTML = `
+                <strong>${draft.title ? draft.title.rendered || draft.title : 'No Title'}</strong>
+                <div class="wp-draft-content-snippet">${draft.excerpt ? draft.excerpt.rendered : (draft.content ? (draft.content.rendered || draft.content).substring(0,150)+'...' : 'No content snippet.')}</div>
+                <p><small>Status: ${draft.status || 'N/A'}</small></p>
+                <p><small>Draft ID: ${draft.id}</small></p>
+            `;
+            // Only add approve button if status is draft (or similar non-published status)
+            if (draft.status === 'draft' || draft.status === 'pending') { // Adjust as per actual statuses
+                const approveBtn = document.createElement('button');
+                approveBtn.textContent = 'Approve & Publish';
+                approveBtn.classList.add('approve-wp-draft-btn');
+                approveBtn.dataset.draftId = draft.id;
+                li.appendChild(approveBtn);
+            }
+            ul.appendChild(li);
+        });
+        wpDraftsListContainer.appendChild(ul);
+    } catch (error) {
+        displayError(`Error fetching WordPress drafts: ${error.message}`, wpDraftsListContainer);
+    }
+}
+
+async function toggleWordPressSettingsForm(projectId, projectLiElement) {
+    const existingForm = projectLiElement.querySelector('.wordpress-settings-form');
+    if (existingForm) {
+        existingForm.remove(); // Toggle off by removing
+        return;
+    }
+
+    const formDiv = document.createElement('div');
+    formDiv.className = 'wordpress-settings-form';
+    formDiv.innerHTML = `
+        <label for="wordpress-url-${projectId}">WordPress Site URL:</label>
+        <input type="text" id="wordpress-url-${projectId}" name="wp-url" placeholder="https://example.com">
+        <label for="wordpress-username-${projectId}">WordPress Username:</label>
+        <input type="text" id="wordpress-username-${projectId}" name="wp-username">
+        <label for="wordpress-app-password-${projectId}">WordPress Application Password:</label>
+        <input type="password" id="wordpress-app-password-${projectId}" name="wp-app-password">
+        <button class="save-wordpress-creds-btn" data-project-id="${projectId}">Save WordPress Credentials</button>
+        <p class="wordpress-creds-status" style="font-size: 0.9em; margin-top: 5px;"></p>
+    `;
+    projectLiElement.appendChild(formDiv); // Append inside the project item
+
+    const statusP = formDiv.querySelector('.wordpress-creds-status');
+    statusP.textContent = 'Loading credentials...';
+
+    try {
+        const response = await fetch(`/api/projects/${projectId}/wordpress-credentials`);
+        if (response.ok) {
+            const creds = await response.json();
+            if (creds && creds.url) {
+                formDiv.querySelector(`#wordpress-url-${projectId}`).value = creds.url;
+                formDiv.querySelector(`#wordpress-username-${projectId}`).value = creds.username;
+                // Application password is not pre-filled for security
+                statusP.textContent = 'Credentials loaded. Application password not shown.';
+            } else {
+                statusP.textContent = 'No WordPress credentials set for this project.';
+            }
+        } else if (response.status === 404) {
+             statusP.textContent = 'No WordPress credentials set for this project.';
+        } else {
+            const errorData = await response.json().catch(() => ({ error: 'Failed to load credentials.' }));
+            statusP.textContent = `Error: ${errorData.error || response.statusText}`;
+        }
+    } catch (error) {
+        statusP.textContent = `Error: ${error.message}`;
+    }
+}
+
+async function handleSaveWordpressCredentials(projectId, url, username, appPassword, statusElement) {
+    if (!url || !username || !appPassword) {
+        statusElement.textContent = 'Error: All fields are required.';
+        statusElement.style.color = 'red';
+        return;
+    }
+    statusElement.textContent = 'Saving...';
+    statusElement.style.color = 'inherit';
+
+    try {
+        const response = await fetch(`/api/projects/${projectId}/wordpress-credentials`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, username, applicationPassword: appPassword }),
+        });
+        if (response.ok) {
+            statusElement.textContent = 'WordPress credentials saved successfully!';
+            statusElement.style.color = 'green';
+            // Optionally hide form or update project display
+            // setTimeout(() => {
+            //     const form = statusElement.closest('.wordpress-settings-form');
+            //     if (form) form.remove();
+            // }, 2000);
+        } else {
+            const errorData = await response.json().catch(() => ({ error: 'Failed to save credentials.' }));
+            statusElement.textContent = `Error: ${errorData.error || response.statusText}`;
+            statusElement.style.color = 'red';
+        }
+    } catch (error) {
+        statusElement.textContent = `Error: ${error.message}`;
+        statusElement.style.color = 'red';
+    }
+}
 
     async function handleCreateObjectiveSubmit(event, projectId) {
         event.preventDefault();
@@ -1361,6 +1565,7 @@ showChatSection();
                 activeItem.classList.remove('active-objective');
             });
             selectedObjectiveId = null; // Deselect objective
+            if (agentDraftWpPostBtn) agentDraftWpPostBtn.style.display = 'none';
         });
     }
     if (backToProjectsFromAssetsButton) backToProjectsFromAssetsButton.addEventListener('click', showProjectsSection);
@@ -1470,6 +1675,44 @@ showChatSection();
         }
     });
 
+    if (agentDraftWpPostBtn) {
+        agentDraftWpPostBtn.addEventListener('click', async () => {
+            if (!selectedObjectiveId || !selectedProjectId) {
+                addMessageToUI('agent', 'Please select an objective first.');
+                return;
+            }
+
+            addMessageToUI('user', 'Please draft a WordPress post for this objective.'); // User action in chat
+            addMessageToUI('agent', 'Understood. I will start drafting a WordPress post. This may take a moment...');
+            agentDraftWpPostBtn.disabled = true;
+            agentDraftWpPostBtn.textContent = 'Drafting...';
+
+            try {
+                const response = await fetch(`/api/objectives/${selectedObjectiveId}/wordpress/create-draft`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    // No body needed for now, server uses objectiveId
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: 'Failed to request post draft.' }));
+                    throw new Error(errorData.error || `Server error: ${response.status}`);
+                }
+
+                const result = await response.json();
+                addMessageToUI('agent', result.message || 'Draft creation process initiated. You can check the "WordPress Drafts" section later.');
+                // UI for viewing drafts (Part C) will show the new draft.
+
+            } catch (error) {
+                console.error('Error triggering WordPress post draft:', error);
+                addMessageToUI('agent', `Error: Could not start draft creation. ${error.message}`);
+            } finally {
+                agentDraftWpPostBtn.disabled = false;
+                agentDraftWpPostBtn.textContent = 'Draft WP Post';
+            }
+        });
+    }
+
     // --- Initial Load ---
     if (projectContextModal) projectContextModal.style.display = 'none'; // Ensure modal is hidden initially
 
@@ -1536,6 +1779,7 @@ showChatSection();
         // Main Content: assets visible, chat hidden.
         if (chatSection) chatSection.style.display = 'none';
         if (assetsSection) assetsSection.style.display = 'block';
+        if (wordpressDraftsSection) wordpressDraftsSection.style.display = 'none';
 
         // Reset objective specific elements
         if (selectedObjectiveTitleElement) selectedObjectiveTitleElement.textContent = 'Objective Title';
@@ -1663,5 +1907,57 @@ showChatSection();
                 }
             }
         });
+    }
+
+    if (wpDraftsListContainer) {
+        wpDraftsListContainer.addEventListener('click', async function(event) {
+            const target = event.target;
+            if (target.classList.contains('approve-wp-draft-btn')) {
+                event.stopPropagation();
+                const draftId = target.dataset.draftId;
+                if (!selectedProjectId || !draftId) {
+                    alert('Error: Project ID or Draft ID missing for approval.');
+                    return;
+                }
+
+                target.disabled = true;
+                target.textContent = 'Publishing...';
+
+                try {
+                    const response = await fetch(`/api/projects/${selectedProjectId}/wordpress/drafts/${draftId}/publish`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                    });
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({ error: 'Failed to publish draft.' }));
+                        throw new Error(errorData.error || `Server error: ${response.status}`);
+                    }
+                    const result = await response.json();
+                    // Option 1: Refresh the list
+                    // fetchAndRenderWordPressDrafts(selectedProjectId);
+                    // Option 2: Update the item directly
+                    target.textContent = 'Published';
+                    target.classList.remove('approve-wp-draft-btn');
+                    target.classList.add('published-wp-draft-info'); // For styling
+                    // Could also remove the button or replace with status text.
+                     const statusP = target.closest('.wp-draft-item').querySelector('p small'); // find status element
+                     if (statusP && statusP.textContent.includes('Status:')) {
+                         statusP.textContent = 'Status: published';
+                     }
+
+                    alert(result.message || 'Draft published successfully!');
+
+                } catch (error) {
+                    console.error('Error publishing WordPress draft:', error);
+                    alert(`Error publishing draft: ${error.message}`);
+                    target.disabled = false;
+                    target.textContent = 'Approve & Publish';
+                }
+            }
+        });
+    }
+
+    if (backToProjectsFromWpDraftsButton) {
+        backToProjectsFromWpDraftsButton.addEventListener('click', showProjectsSection);
     }
 });

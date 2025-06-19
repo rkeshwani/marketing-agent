@@ -12,6 +12,7 @@ const { generateProjectContextQuestions, structureProjectContextAnswers } = requ
 const Project = require('./models/Project');
 const Objective = require('./models/Objective');
 const dataStore = require('./dataStore');
+const wordpressService = require('./services/wordpressService'); // Added for WordPress integration
 const SchedulerService = require('./services/schedulerService'); // Added: Import SchedulerService
 const app = express();
 const port = process.env.PORT || 3000;
@@ -1161,6 +1162,145 @@ app.post('/api/objectives/:objectiveId/chat', async (req, res) => {
 // === Original Chat API endpoint (to be DEPRECATED or modified later if needed) ===
 // The /api/chat endpoint has been removed as it's redundant and not objective-specific.
 
+// === WORDPRESS INTEGRATION API ENDPOINTS ===
+
+// POST /api/projects/:projectId/wordpress-credentials - Save/Update WordPress credentials
+app.post('/api/projects/:projectId/wordpress-credentials', async (req, res) => {
+    const { projectId } = req.params;
+    const { url, username, applicationPassword } = req.body;
+
+    if (!url || !username || !applicationPassword) {
+        return res.status(400).json({ error: 'WordPress URL, username, and application password are required.' });
+    }
+    try {
+        const project = dataStore.findProjectById(projectId);
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found.' });
+        }
+        // storeCredentials will save to dataStore and re-initialize the service for this project
+        await wordpressService.storeCredentials(projectId, url, username, applicationPassword);
+        res.status(200).json({ message: 'WordPress credentials saved successfully.' });
+    } catch (error) {
+        console.error(`Error saving WordPress credentials for project ${projectId}:`, error);
+        res.status(500).json({ error: 'Failed to save WordPress credentials.' });
+    }
+});
+
+// GET /api/projects/:projectId/wordpress-credentials - Get WordPress credentials
+app.get('/api/projects/:projectId/wordpress-credentials', async (req, res) => {
+    const { projectId } = req.params;
+    try {
+        const project = dataStore.findProjectById(projectId);
+        if (!project) {
+            return res.status(404).json({ error: 'Project not found.' });
+        }
+        // Directly use dataStore to get credentials for pre-filling forms
+        const credentials = await dataStore.getWordpressCredentials(projectId);
+        if (credentials) {
+            // Return credentials; client-side should handle not displaying the password directly
+            res.status(200).json(credentials);
+        } else {
+            res.status(200).json({ message: 'WordPress credentials not set for this project.' }); // Use 200 with message or 404
+        }
+    } catch (error) {
+        console.error(`Error fetching WordPress credentials for project ${projectId}:`, error);
+        res.status(500).json({ error: 'Failed to fetch WordPress credentials.' });
+    }
+});
+
+// POST /api/objectives/:objectiveId/wordpress/create-draft - Agent creates a WP draft
+app.post('/api/objectives/:objectiveId/wordpress/create-draft', async (req, res) => {
+    const { objectiveId } = req.params;
+    try {
+        const objective = dataStore.findObjectiveById(objectiveId);
+        if (!objective) {
+            return res.status(404).json({ error: 'Objective not found.' });
+        }
+        const projectId = objective.projectId;
+        if (!projectId) {
+            return res.status(400).json({ error: 'Project ID not found for this objective.' });
+        }
+
+        const wpInstance = await wordpressService.initWpapi(projectId);
+        if (!wpInstance) {
+            return res.status(400).json({ error: 'WordPress is not configured for this project. Please set credentials first.' });
+        }
+
+        // Placeholder content generation - Replace with actual agent logic
+        const postTitle = `Draft for: ${objective.title}`;
+        let postContent = `This is a draft related to the objective: "${objective.title}".
+
+Objective Brief:
+${objective.brief}
+
+`;
+
+        // Simple chat history summary (conceptual)
+        if (objective.chatHistory && objective.chatHistory.length > 0) {
+            postContent += "\nConversation Highlights:\n";
+            objective.chatHistory.slice(-5).forEach(msg => { // Last 5 messages
+                postContent += `- ${msg.speaker}: ${msg.content.substring(0, 100)}...\n`;
+            });
+        }
+        // End placeholder content generation
+
+        const draftPost = await wordpressService.createPost({
+            title: postTitle,
+            content: postContent,
+            status: 'draft'
+        }); // Uses the initialized wpInstance from initWpapi
+
+        res.status(201).json({
+            message: 'WordPress draft created successfully by the agent.',
+            draftId: draftPost.id,
+            draftLink: draftPost.link // WP API usually returns a link
+        });
+
+    } catch (error) {
+        console.error(`Error creating WordPress draft for objective ${objectiveId}:`, error);
+        res.status(500).json({ error: error.message || 'Failed to create WordPress draft.' });
+    }
+});
+
+// GET /api/projects/:projectId/wordpress/drafts - Fetch all draft posts for a project
+app.get('/api/projects/:projectId/wordpress/drafts', async (req, res) => {
+    const { projectId } = req.params;
+    try {
+        const wpInstance = await wordpressService.initWpapi(projectId);
+        if (!wpInstance) {
+            return res.status(400).json({ error: 'WordPress is not configured for this project. Please set credentials first.' });
+        }
+
+        // Fetch drafts. You might want to add more params like per_page.
+        const drafts = await wordpressService.fetchPosts({ status: 'draft', per_page: 20 });
+        res.status(200).json(drafts);
+    } catch (error) {
+        console.error(`Error fetching WordPress drafts for project ${projectId}:`, error);
+        res.status(500).json({ error: error.message || 'Failed to fetch WordPress drafts.' });
+    }
+});
+
+// POST /api/projects/:projectId/wordpress/drafts/:draftId/publish - Publish a draft
+app.post('/api/projects/:projectId/wordpress/drafts/:draftId/publish', async (req, res) => {
+    const { projectId, draftId } = req.params;
+    try {
+        const wpInstance = await wordpressService.initWpapi(projectId);
+        if (!wpInstance) {
+            return res.status(400).json({ error: 'WordPress is not configured for this project. Please set credentials first.' });
+        }
+
+        const publishedPost = await wordpressService.updatePostStatus(draftId, 'publish');
+        res.status(200).json({
+            message: 'WordPress draft published successfully.',
+            postId: publishedPost.id,
+            postLink: publishedPost.link
+        });
+    } catch (error) {
+        console.error(`Error publishing WordPress draft ${draftId} for project ${projectId}:`, error);
+        res.status(500).json({ error: error.message || 'Failed to publish WordPress draft.' });
+    }
+});
+
 // All other GET requests not handled by the static middleware or API routes
 // should serve the main client application (index.html).
 // This is important for single-page applications (SPAs) and PWA navigation.
@@ -1181,3 +1321,5 @@ app.listen(port, () => {
     }
   }, SCHEDULER_INTERVAL_MS);
 });
+
+module.exports = app; // Export the app for testing
