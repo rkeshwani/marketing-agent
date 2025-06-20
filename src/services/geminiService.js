@@ -88,52 +88,20 @@ async function fetchGeminiResponse(userInput, chatHistory, projectAssets = []) {
     const apiRequestBody = {
         contents: [
             ...chatHistory.map(item => {
-                let currentContent;
-                let role;
-
-                if (item.role && item.parts && item.parts.length > 0 && typeof item.parts[0].text !== 'undefined') {
-                    // Item has Gemini structure
-                    role = item.role;
-                    currentContent = item.parts[0].text;
-                    if (typeof currentContent === 'object' && currentContent !== null) {
-                        if (currentContent.message && currentContent.stepDescription) {
-                            currentContent = `${currentContent.stepDescription}\n\n${currentContent.message}`;
-                        } else {
-                            currentContent = JSON.stringify(currentContent);
-                        }
-                    } else if (typeof currentContent !== 'string') {
-                        currentContent = String(currentContent || '');
-                    }
-                    return { role: role, parts: [{ text: currentContent }] };
-                } else {
-                    // Item has original structure (speaker, content)
-                    role = 'user'; // Default role
-                    if (item.speaker === 'agent' || item.speaker === 'system') {
-                        role = 'model';
-                    } else if (item.speaker === 'user') {
-                        role = 'user';
-                    }
-                    currentContent = item.content;
-                    if (typeof currentContent === 'object' && currentContent !== null) {
-                        if (currentContent.message && currentContent.stepDescription) {
-                            currentContent = `${currentContent.stepDescription}\n\n${currentContent.message}`;
-                        } else {
-                            currentContent = JSON.stringify(currentContent);
-                        }
-                    } else if (typeof currentContent !== 'string') {
-                        currentContent = String(currentContent || '');
-                    }
-                    return { role: role, parts: [{ text: currentContent }] };
+                // If item already has 'role' and 'parts', assume it's correctly formatted
+                if (item.role && item.parts) {
+                    return item;
                 }
+                let role = 'user'; // Default role
+                if (item.speaker === 'agent' || item.speaker === 'system') {
+                    role = 'model';
+                } else if (item.speaker === 'user') {
+                    role = 'user';
+                }
+                // Ensure content is not undefined
+                return { role: role, parts: [{ text: item.content || '' }] };
             }),
-            {
-                role: "user",
-                parts: [{
-                    text: (typeof userInput === 'object' && userInput !== null)
-                          ? JSON.stringify(userInput)
-                          : String(userInput || '')
-                }]
-            }
+            { role: "user", parts: [{ text: userInput }] }
         ],
         tools: [{ functionDeclarations: tools }],
     };

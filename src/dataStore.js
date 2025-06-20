@@ -223,18 +223,7 @@ function addObjective(objectiveData, projectId) {
         return null; // Or throw an error
     }
     // Corrected constructor arguments: projectId, title, brief
-    // Ensure title and brief are strings
-    const title = String(objectiveData.title || '');
-    const brief = String(objectiveData.brief || '');
-    const newObjective = new Objective(projectId, title, brief);
-
-    // Validation check for the newObjective instance
-    if (typeof newObjective !== 'object' || newObjective === null || !newObjective.hasOwnProperty('id') || !newObjective.hasOwnProperty('title')) {
-        console.error('CRITICAL: newObjective is not a valid Objective instance right after construction!');
-        console.error('Objective Data:', JSON.stringify(objectiveData));
-        console.error('Constructed newObjective:', JSON.stringify(newObjective));
-        return null; // Or throw new Error('Failed to create valid Objective instance');
-    }
+    const newObjective = new Objective(projectId, objectiveData.title, objectiveData.brief);
 
     // If plan structure is provided in objectiveData and needs to overwrite/extend default
     if (objectiveData.plan) {

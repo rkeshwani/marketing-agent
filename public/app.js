@@ -1268,6 +1268,7 @@ showChatSection();
 
     // --- Markdown Parsing Function ---
     function simpleMarkdownToHtml(markdownText) {
+        console.log('[DEBUG] simpleMarkdownToHtml input:', markdownText ? markdownText.substring(0,100) + '...' : markdownText);
         if (typeof markdownText !== 'string') {
             markdownText = String(markdownText);
         }
@@ -1389,36 +1390,28 @@ showChatSection();
         // html = html.replace(/(<\/(ul|ol|pre|li)>)\s*<br>/gi, '$1');
         // html = html.replace(/<p><\/p>/g, ''); // Remove empty paragraphs
 
+        console.log('[DEBUG] simpleMarkdownToHtml output:', html ? html.substring(0,100) + '...' : html);
         return html;
     }
 
 
     // --- Chat Functions ---
     function addMessageToUI(speaker, text) {
+        console.log(`[DEBUG] addMessageToUI called with speaker: "${speaker}", text:`, text ? text.substring(0, 100) + (text.length > 100 ? '...' : '') : text);
         const messageDiv = document.createElement('div');
         // Standardize to 'user' and 'agent' for CSS class consistency
         const role = (speaker && speaker.toLowerCase() === 'user') ? 'user' : 'agent';
         messageDiv.classList.add('message', `${role}-message`);
 
         if (role === 'agent') {
-            let processedText;
-            if (typeof text === 'object' && text !== null) {
-                if (text.message && text.stepDescription) {
-                    processedText = `${text.stepDescription}\n\n${text.message}`;
-                } else if (text.message) {
-                    processedText = text.message;
-                } else {
-                    processedText = JSON.stringify(text);
-                }
-            } else {
-                processedText = String(text || ''); // Handles null, undefined, or existing strings
-            }
-            messageDiv.innerHTML = simpleMarkdownToHtml(processedText);
+            messageDiv.innerHTML = simpleMarkdownToHtml(text);
         } else {
-            messageDiv.textContent = text; // User messages are expected to be plain text
+            messageDiv.textContent = text;
         }
 
+        console.log('[DEBUG] messageDiv outerHTML before append:', messageDiv.outerHTML);
         chatOutput.appendChild(messageDiv);
+        console.log('[DEBUG] messageDiv appended. chatOutput.childElementCount:', chatOutput.childElementCount);
         chatOutput.scrollTop = chatOutput.scrollHeight;
 
         // Added conditional block for chat input visibility
@@ -1457,14 +1450,22 @@ showChatSection();
                 throw new Error(`Failed to fetch objective details for chat history: ${response.statusText}`);
             }
             const fetchedObjective = await response.json();
+            console.log('[DEBUG] Fetched objective data for chat history:', JSON.stringify(fetchedObjective, null, 2));
+            if (fetchedObjective && fetchedObjective.chatHistory) {
+                console.log('[DEBUG] Raw chatHistory from fetchedObjective:', JSON.stringify(fetchedObjective.chatHistory, null, 2));
+            } else {
+                console.log('[DEBUG] chatHistory is missing or undefined on fetchedObjective.');
+            }
             clearContainer(chatOutput); // Clear "Loading..."
 
             if (fetchedObjective && fetchedObjective.chatHistory) {
                 currentChatHistory = fetchedObjective.chatHistory;
+                console.log('[DEBUG] currentChatHistory after assignment:', JSON.stringify(currentChatHistory, null, 2));
                 if (currentChatHistory.length === 0) {
                     addMessageToUI('agent', 'No chat history for this objective yet. Start the conversation!');
                 } else {
                     currentChatHistory.forEach(msg => {
+                        console.log('[DEBUG] Processing message for UI:', JSON.stringify(msg, null, 2));
                         addMessageToUI(msg.speaker, msg.content);
                     });
                 }
@@ -1521,32 +1522,14 @@ showChatSection();
                     objective.plan = { steps: [], questions: [], status: '', currentStepIndex: 0 };
                 }
 
-                let agentMessageContent = "";
-                if (typeof data.message === 'object' && data.message !== null) {
-                    if (data.message.message && data.message.stepDescription) {
-                        agentMessageContent = `${data.message.stepDescription}\n\n${data.message.message}`;
-                    } else if (data.message.message) {
-                        agentMessageContent = data.message.message;
-                    } else if (data.message.text) {
-                        agentMessageContent = data.message.text;
-                    } else {
-                        agentMessageContent = JSON.stringify(data.message);
-                    }
-                } else if (typeof data.message === 'string') {
-                    agentMessageContent = data.message;
-                } else {
-                    // Fallback for unexpected types or null/undefined if not caught by typeof string
-                    agentMessageContent = String(data.message || "Received an empty or unexpected message content.");
-                }
-
                 if (data.planStatus === 'in_progress') {
-                    addMessageToUI('agent', agentMessageContent); // Use processed message
+                    addMessageToUI('agent', data.message); // This is the step execution result
                     objective.plan.status = 'in_progress';
                     // data.currentStep is the index of the step *just processed*
                     objective.plan.currentStepIndex = data.currentStep + 1;
                     renderPlan(objective.plan);
                 } else if (data.planStatus === 'completed') {
-                    addMessageToUI('agent', agentMessageContent); // Use processed message
+                    addMessageToUI('agent', data.message); // "All plan steps completed!"
                     objective.plan.status = 'completed';
                     objective.plan.currentStepIndex = objective.plan.steps.length;
                     renderPlan(objective.plan);
@@ -1555,25 +1538,13 @@ showChatSection();
                     // userInputElement.placeholder = "Objective completed!";
                     // sendButton.disabled = true;
                 } else {
-                    // Fallback for other planStatuses.
-                    // agentMessageContent is already prepared based on data.message.
-                    // If data.response is preferred here, similar logic would be needed.
-                    // Assuming data.message is the primary source for this path.
-                    const agentResponse = data.response || agentMessageContent || "Received an update with unhandled plan status.";
+                    // Fallback for other planStatuses if any, or just treat as regular message
+                    const agentResponse = data.response || data.message || "Received an update with unhandled plan status.";
                     addMessageToUI('agent', agentResponse);
                 }
             } else { // Standard chat message without plan status
-                let agentResponseContent = "";
-                if (typeof data.response === 'object' && data.response !== null) {
-                    // For data.response, if it's an object, stringify it as its structure is not specified for special formatting.
-                    // Or attempt to find a 'message' or 'text' property as a common fallback.
-                    agentResponseContent = data.response.message || data.response.text || JSON.stringify(data.response);
-                } else if (typeof data.response === 'string') {
-                    agentResponseContent = data.response;
-                } else {
-                    agentResponseContent = String(data.response || "Received an empty or unexpected response.");
-                }
-                addMessageToUI('agent', agentResponseContent);
+                const agentResponse = data.response; // Assuming 'response' for regular chat
+                addMessageToUI('agent', agentResponse);
             }
 
             // Optional: Add to local currentChatHistory if needed, but server is source of truth.
