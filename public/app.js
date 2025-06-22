@@ -36,7 +36,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const sendButton = document.getElementById('send-button');
     const chatOutput = document.getElementById('chat-output');
     const chatInputArea = document.getElementById('chat-input-area'); // Added
-    const agentDraftWpPostBtn = document.getElementById('agent-draft-wp-post-btn');
 
     // Plan Display Elements
     const planDisplaySection = document.getElementById('plan-display-section');
@@ -63,12 +62,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const submitContextAnswersBtn = document.getElementById('submit-context-answers-btn');
     const closeContextModalBtn = document.getElementById('close-context-modal-btn'); // Optional, ensure it exists in HTML
     const contextAnswersForm = document.getElementById('context-answers-form'); // Ensure this form wraps questions and submit button
-
-    // WordPress Drafts DOM Elements
-    const wordpressDraftsSection = document.getElementById('wordpress-drafts-section');
-    const selectedProjectNameForWpDraftsElement = document.getElementById('selected-project-name-for-wp-drafts');
-    const wpDraftsListContainer = document.getElementById('wp-drafts-list-container');
-    const backToProjectsFromWpDraftsButton = document.getElementById('back-to-projects-from-wp-drafts-button');
 
 
     // --- State ---
@@ -138,7 +131,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Main Content: chat hidden, assets hidden.
         if (chatSection) chatSection.style.display = 'none';
         if (assetsSection) assetsSection.style.display = 'none';
-        if (wordpressDraftsSection) wordpressDraftsSection.style.display = 'none';
 
         if (projectContextModal) projectContextModal.style.display = 'none';
 
@@ -162,7 +154,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (projectsSection) {
             setupFormToggle('create-project-form-container', 'Create New Project', projectsSection);
         }
-        if (agentDraftWpPostBtn) agentDraftWpPostBtn.style.display = 'none';
     }
 
     // showObjectivesSection is effectively removed/replaced by nesting logic.
@@ -177,7 +168,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Main Content: chat visible, assets hidden.
         if (chatSection) chatSection.style.display = 'block';
         if (assetsSection) assetsSection.style.display = 'none';
-        if (wordpressDraftsSection) wordpressDraftsSection.style.display = 'none';
 
         userInputElement.value = '';
         clearContainer(chatOutput);
@@ -193,20 +183,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 selectedObjectiveTitleElement.textContent = objective ? objective.title : "Objective";
             }
             await fetchAndDisplayPlan(selectedObjectiveId);
-
-            // Control visibility of "Draft WP Post" button
-            if (project && project.wordpressUrl && agentDraftWpPostBtn) {
-                agentDraftWpPostBtn.style.display = 'inline-block';
-            } else if (agentDraftWpPostBtn) {
-                agentDraftWpPostBtn.style.display = 'none';
-            }
-
         } else {
             displayError("No objective selected for chat.", chatOutput, true);
             // No simple "showObjectivesSection" to go back to in the old sense.
             // Clear main content as a fallback.
             if (chatSection) chatSection.style.display = 'none';
-            if (agentDraftWpPostBtn) agentDraftWpPostBtn.style.display = 'none';
         }
     }
 
@@ -655,21 +636,6 @@ document.addEventListener('DOMContentLoaded', () => {
             addObjectiveBtn.dataset.projectId = project.id;
             actionsDiv.appendChild(addObjectiveBtn);
 
-            // WordPress Settings Button
-            const wordpressSettingsBtn = document.createElement('button');
-            wordpressSettingsBtn.textContent = 'WordPress Settings';
-            wordpressSettingsBtn.classList.add('wordpress-settings-btn');
-            wordpressSettingsBtn.dataset.projectId = project.id;
-            actionsDiv.appendChild(wordpressSettingsBtn);
-
-            // View WP Drafts Button
-            const viewWpDraftsBtn = document.createElement('button');
-            viewWpDraftsBtn.textContent = 'View WP Drafts';
-            viewWpDraftsBtn.classList.add('view-wp-drafts-btn');
-            viewWpDraftsBtn.dataset.projectId = project.id;
-            viewWpDraftsBtn.dataset.projectName = project.name; // For setting header
-            actionsDiv.appendChild(viewWpDraftsBtn);
-
             li.appendChild(actionsDiv);
 
 
@@ -741,180 +707,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 projectLi.appendChild(clonedFormContainer); // Append to the project LI
                 const titleInput = clonedFormContainer.querySelector('#objective-title');
                 if (titleInput) titleInput.focus();
-            } else if (target.classList.contains('wordpress-settings-btn')) {
-                event.stopPropagation();
-                const projectId = target.dataset.projectId;
-                const projectLiElement = target.closest('.project-item');
-                toggleWordPressSettingsForm(projectId, projectLiElement);
-            } else if (target.classList.contains('save-wordpress-creds-btn')) {
-                event.stopPropagation();
-                const projectId = target.dataset.projectId;
-                const projectLiElement = target.closest('.project-item');
-                const form = projectLiElement.querySelector('.wordpress-settings-form');
-                if (form) {
-                    const url = form.querySelector(`#wordpress-url-${projectId}`).value;
-                    const username = form.querySelector(`#wordpress-username-${projectId}`).value;
-                    const appPassword = form.querySelector(`#wordpress-app-password-${projectId}`).value;
-                    const statusElement = form.querySelector('.wordpress-creds-status');
-                    handleSaveWordpressCredentials(projectId, url, username, appPassword, statusElement);
-                }
-            } else if (target.classList.contains('view-wp-drafts-btn')) {
-                event.stopPropagation();
-                selectedProjectId = target.dataset.projectId;
-                if (selectedProjectNameForWpDraftsElement) { // Ensure element exists
-                    selectedProjectNameForWpDraftsElement.textContent = target.dataset.projectName;
-                }
-                showWordPressDraftsSection();
             }
             // The main project item click (for navigation) is handled by the listener on the `li` itself.
         });
     }
-
-function showWordPressDraftsSection() {
-    if (!wordpressDraftsSection) return;
-
-    if (projectsSection) projectsSection.style.display = 'block'; // Keep sidebar
-    if (chatSection) chatSection.style.display = 'none';
-    if (assetsSection) assetsSection.style.display = 'none';
-    wordpressDraftsSection.style.display = 'block';
-
-    if (agentDraftWpPostBtn) agentDraftWpPostBtn.style.display = 'none';
-
-    if (selectedProjectId) {
-        // Project name is set by the 'View WP Drafts' button click in renderProjects
-        fetchAndRenderWordPressDrafts(selectedProjectId);
-    } else {
-        displayError("No project selected. Please go back and select a project.", wpDraftsListContainer, true);
-        showProjectsSection(); // Fallback
-    }
-}
-
-async function fetchAndRenderWordPressDrafts(projectId) {
-    if (!wpDraftsListContainer) return;
-    clearContainer(wpDraftsListContainer);
-    wpDraftsListContainer.innerHTML = '<p>Loading drafts...</p>';
-
-    try {
-        const response = await fetch(`/api/projects/${projectId}/wordpress/drafts`);
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: `Failed to fetch drafts: ${response.statusText}` }));
-            throw new Error(errorData.error || `Server error: ${response.status}`);
-        }
-        const drafts = await response.json();
-        clearContainer(wpDraftsListContainer);
-
-        if (!drafts || drafts.length === 0) {
-            wpDraftsListContainer.innerHTML = '<p>No WordPress drafts found for this project.</p>';
-            return;
-        }
-
-        const ul = document.createElement('ul');
-        ul.classList.add('wp-drafts-list');
-        drafts.forEach(draft => {
-            const li = document.createElement('li');
-            li.classList.add('wp-draft-item');
-            li.innerHTML = `
-                <strong>${draft.title ? draft.title.rendered || draft.title : 'No Title'}</strong>
-                <div class="wp-draft-content-snippet">${draft.excerpt ? draft.excerpt.rendered : (draft.content ? (draft.content.rendered || draft.content).substring(0,150)+'...' : 'No content snippet.')}</div>
-                <p><small>Status: ${draft.status || 'N/A'}</small></p>
-                <p><small>Draft ID: ${draft.id}</small></p>
-            `;
-            // Only add approve button if status is draft (or similar non-published status)
-            if (draft.status === 'draft' || draft.status === 'pending') { // Adjust as per actual statuses
-                const approveBtn = document.createElement('button');
-                approveBtn.textContent = 'Approve & Publish';
-                approveBtn.classList.add('approve-wp-draft-btn');
-                approveBtn.dataset.draftId = draft.id;
-                li.appendChild(approveBtn);
-            }
-            ul.appendChild(li);
-        });
-        wpDraftsListContainer.appendChild(ul);
-    } catch (error) {
-        displayError(`Error fetching WordPress drafts: ${error.message}`, wpDraftsListContainer);
-    }
-}
-
-async function toggleWordPressSettingsForm(projectId, projectLiElement) {
-    const existingForm = projectLiElement.querySelector('.wordpress-settings-form');
-    if (existingForm) {
-        existingForm.remove(); // Toggle off by removing
-        return;
-    }
-
-    const formDiv = document.createElement('div');
-    formDiv.className = 'wordpress-settings-form';
-    formDiv.innerHTML = `
-        <label for="wordpress-url-${projectId}">WordPress Site URL:</label>
-        <input type="text" id="wordpress-url-${projectId}" name="wp-url" placeholder="https://example.com">
-        <label for="wordpress-username-${projectId}">WordPress Username:</label>
-        <input type="text" id="wordpress-username-${projectId}" name="wp-username">
-        <label for="wordpress-app-password-${projectId}">WordPress Application Password:</label>
-        <input type="password" id="wordpress-app-password-${projectId}" name="wp-app-password">
-        <button class="save-wordpress-creds-btn" data-project-id="${projectId}">Save WordPress Credentials</button>
-        <p class="wordpress-creds-status" style="font-size: 0.9em; margin-top: 5px;"></p>
-    `;
-    projectLiElement.appendChild(formDiv); // Append inside the project item
-
-    const statusP = formDiv.querySelector('.wordpress-creds-status');
-    statusP.textContent = 'Loading credentials...';
-
-    try {
-        const response = await fetch(`/api/projects/${projectId}/wordpress-credentials`);
-        if (response.ok) {
-            const creds = await response.json();
-            if (creds && creds.url) {
-                formDiv.querySelector(`#wordpress-url-${projectId}`).value = creds.url;
-                formDiv.querySelector(`#wordpress-username-${projectId}`).value = creds.username;
-                // Application password is not pre-filled for security
-                statusP.textContent = 'Credentials loaded. Application password not shown.';
-            } else {
-                statusP.textContent = 'No WordPress credentials set for this project.';
-            }
-        } else if (response.status === 404) {
-             statusP.textContent = 'No WordPress credentials set for this project.';
-        } else {
-            const errorData = await response.json().catch(() => ({ error: 'Failed to load credentials.' }));
-            statusP.textContent = `Error: ${errorData.error || response.statusText}`;
-        }
-    } catch (error) {
-        statusP.textContent = `Error: ${error.message}`;
-    }
-}
-
-async function handleSaveWordpressCredentials(projectId, url, username, appPassword, statusElement) {
-    if (!url || !username || !appPassword) {
-        statusElement.textContent = 'Error: All fields are required.';
-        statusElement.style.color = 'red';
-        return;
-    }
-    statusElement.textContent = 'Saving...';
-    statusElement.style.color = 'inherit';
-
-    try {
-        const response = await fetch(`/api/projects/${projectId}/wordpress-credentials`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, username, applicationPassword: appPassword }),
-        });
-        if (response.ok) {
-            statusElement.textContent = 'WordPress credentials saved successfully!';
-            statusElement.style.color = 'green';
-            // Optionally hide form or update project display
-            // setTimeout(() => {
-            //     const form = statusElement.closest('.wordpress-settings-form');
-            //     if (form) form.remove();
-            // }, 2000);
-        } else {
-            const errorData = await response.json().catch(() => ({ error: 'Failed to save credentials.' }));
-            statusElement.textContent = `Error: ${errorData.error || response.statusText}`;
-            statusElement.style.color = 'red';
-        }
-    } catch (error) {
-        statusElement.textContent = `Error: ${error.message}`;
-        statusElement.style.color = 'red';
-    }
-}
 
     async function handleCreateObjectiveSubmit(event, projectId) {
         event.preventDefault();
@@ -1268,7 +1064,6 @@ showChatSection();
 
     // --- Markdown Parsing Function ---
     function simpleMarkdownToHtml(markdownText) {
-        console.log('[DEBUG] simpleMarkdownToHtml input:', markdownText ? markdownText.substring(0,100) + '...' : markdownText);
         if (typeof markdownText !== 'string') {
             markdownText = String(markdownText);
         }
@@ -1390,28 +1185,36 @@ showChatSection();
         // html = html.replace(/(<\/(ul|ol|pre|li)>)\s*<br>/gi, '$1');
         // html = html.replace(/<p><\/p>/g, ''); // Remove empty paragraphs
 
-        console.log('[DEBUG] simpleMarkdownToHtml output:', html ? html.substring(0,100) + '...' : html);
         return html;
     }
 
 
     // --- Chat Functions ---
     function addMessageToUI(speaker, text) {
-        console.log(`[DEBUG] addMessageToUI called with speaker: "${speaker}", text:`, text ? text.substring(0, 100) + (text.length > 100 ? '...' : '') : text);
         const messageDiv = document.createElement('div');
         // Standardize to 'user' and 'agent' for CSS class consistency
         const role = (speaker && speaker.toLowerCase() === 'user') ? 'user' : 'agent';
         messageDiv.classList.add('message', `${role}-message`);
 
         if (role === 'agent') {
-            messageDiv.innerHTML = simpleMarkdownToHtml(text);
+            let processedText;
+            if (typeof text === 'object' && text !== null) {
+                if (text.message && text.stepDescription) {
+                    processedText = `${text.stepDescription}\n\n${text.message}`;
+                } else if (text.message) {
+                    processedText = text.message;
+                } else {
+                    processedText = JSON.stringify(text);
+                }
+            } else {
+                processedText = String(text || ''); // Handles null, undefined, or existing strings
+            }
+            messageDiv.innerHTML = simpleMarkdownToHtml(processedText);
         } else {
-            messageDiv.textContent = text;
+            messageDiv.textContent = text; // User messages are expected to be plain text
         }
 
-        console.log('[DEBUG] messageDiv outerHTML before append:', messageDiv.outerHTML);
         chatOutput.appendChild(messageDiv);
-        console.log('[DEBUG] messageDiv appended. chatOutput.childElementCount:', chatOutput.childElementCount);
         chatOutput.scrollTop = chatOutput.scrollHeight;
 
         // Added conditional block for chat input visibility
@@ -1450,22 +1253,14 @@ showChatSection();
                 throw new Error(`Failed to fetch objective details for chat history: ${response.statusText}`);
             }
             const fetchedObjective = await response.json();
-            console.log('[DEBUG] Fetched objective data for chat history:', JSON.stringify(fetchedObjective, null, 2));
-            if (fetchedObjective && fetchedObjective.chatHistory) {
-                console.log('[DEBUG] Raw chatHistory from fetchedObjective:', JSON.stringify(fetchedObjective.chatHistory, null, 2));
-            } else {
-                console.log('[DEBUG] chatHistory is missing or undefined on fetchedObjective.');
-            }
             clearContainer(chatOutput); // Clear "Loading..."
 
             if (fetchedObjective && fetchedObjective.chatHistory) {
                 currentChatHistory = fetchedObjective.chatHistory;
-                console.log('[DEBUG] currentChatHistory after assignment:', JSON.stringify(currentChatHistory, null, 2));
                 if (currentChatHistory.length === 0) {
                     addMessageToUI('agent', 'No chat history for this objective yet. Start the conversation!');
                 } else {
                     currentChatHistory.forEach(msg => {
-                        console.log('[DEBUG] Processing message for UI:', JSON.stringify(msg, null, 2));
                         addMessageToUI(msg.speaker, msg.content);
                     });
                 }
@@ -1522,14 +1317,32 @@ showChatSection();
                     objective.plan = { steps: [], questions: [], status: '', currentStepIndex: 0 };
                 }
 
+                let agentMessageContent = "";
+                if (typeof data.message === 'object' && data.message !== null) {
+                    if (data.message.message && data.message.stepDescription) {
+                        agentMessageContent = `${data.message.stepDescription}\n\n${data.message.message}`;
+                    } else if (data.message.message) {
+                        agentMessageContent = data.message.message;
+                    } else if (data.message.text) {
+                        agentMessageContent = data.message.text;
+                    } else {
+                        agentMessageContent = JSON.stringify(data.message);
+                    }
+                } else if (typeof data.message === 'string') {
+                    agentMessageContent = data.message;
+                } else {
+                    // Fallback for unexpected types or null/undefined if not caught by typeof string
+                    agentMessageContent = String(data.message || "Received an empty or unexpected message content.");
+                }
+
                 if (data.planStatus === 'in_progress') {
-                    addMessageToUI('agent', data.message); // This is the step execution result
+                    addMessageToUI('agent', agentMessageContent); // Use processed message
                     objective.plan.status = 'in_progress';
                     // data.currentStep is the index of the step *just processed*
                     objective.plan.currentStepIndex = data.currentStep + 1;
                     renderPlan(objective.plan);
                 } else if (data.planStatus === 'completed') {
-                    addMessageToUI('agent', data.message); // "All plan steps completed!"
+                    addMessageToUI('agent', agentMessageContent); // Use processed message
                     objective.plan.status = 'completed';
                     objective.plan.currentStepIndex = objective.plan.steps.length;
                     renderPlan(objective.plan);
@@ -1538,13 +1351,25 @@ showChatSection();
                     // userInputElement.placeholder = "Objective completed!";
                     // sendButton.disabled = true;
                 } else {
-                    // Fallback for other planStatuses if any, or just treat as regular message
-                    const agentResponse = data.response || data.message || "Received an update with unhandled plan status.";
+                    // Fallback for other planStatuses.
+                    // agentMessageContent is already prepared based on data.message.
+                    // If data.response is preferred here, similar logic would be needed.
+                    // Assuming data.message is the primary source for this path.
+                    const agentResponse = data.response || agentMessageContent || "Received an update with unhandled plan status.";
                     addMessageToUI('agent', agentResponse);
                 }
             } else { // Standard chat message without plan status
-                const agentResponse = data.response; // Assuming 'response' for regular chat
-                addMessageToUI('agent', agentResponse);
+                let agentResponseContent = "";
+                if (typeof data.response === 'object' && data.response !== null) {
+                    // For data.response, if it's an object, stringify it as its structure is not specified for special formatting.
+                    // Or attempt to find a 'message' or 'text' property as a common fallback.
+                    agentResponseContent = data.response.message || data.response.text || JSON.stringify(data.response);
+                } else if (typeof data.response === 'string') {
+                    agentResponseContent = data.response;
+                } else {
+                    agentResponseContent = String(data.response || "Received an empty or unexpected response.");
+                }
+                addMessageToUI('agent', agentResponseContent);
             }
 
             // Optional: Add to local currentChatHistory if needed, but server is source of truth.
@@ -1578,7 +1403,6 @@ showChatSection();
                 activeItem.classList.remove('active-objective');
             });
             selectedObjectiveId = null; // Deselect objective
-            if (agentDraftWpPostBtn) agentDraftWpPostBtn.style.display = 'none';
         });
     }
     if (backToProjectsFromAssetsButton) backToProjectsFromAssetsButton.addEventListener('click', showProjectsSection);
@@ -1688,44 +1512,6 @@ showChatSection();
         }
     });
 
-    if (agentDraftWpPostBtn) {
-        agentDraftWpPostBtn.addEventListener('click', async () => {
-            if (!selectedObjectiveId || !selectedProjectId) {
-                addMessageToUI('agent', 'Please select an objective first.');
-                return;
-            }
-
-            addMessageToUI('user', 'Please draft a WordPress post for this objective.'); // User action in chat
-            addMessageToUI('agent', 'Understood. I will start drafting a WordPress post. This may take a moment...');
-            agentDraftWpPostBtn.disabled = true;
-            agentDraftWpPostBtn.textContent = 'Drafting...';
-
-            try {
-                const response = await fetch(`/api/objectives/${selectedObjectiveId}/wordpress/create-draft`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    // No body needed for now, server uses objectiveId
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ error: 'Failed to request post draft.' }));
-                    throw new Error(errorData.error || `Server error: ${response.status}`);
-                }
-
-                const result = await response.json();
-                addMessageToUI('agent', result.message || 'Draft creation process initiated. You can check the "WordPress Drafts" section later.');
-                // UI for viewing drafts (Part C) will show the new draft.
-
-            } catch (error) {
-                console.error('Error triggering WordPress post draft:', error);
-                addMessageToUI('agent', `Error: Could not start draft creation. ${error.message}`);
-            } finally {
-                agentDraftWpPostBtn.disabled = false;
-                agentDraftWpPostBtn.textContent = 'Draft WP Post';
-            }
-        });
-    }
-
     // --- Initial Load ---
     if (projectContextModal) projectContextModal.style.display = 'none'; // Ensure modal is hidden initially
 
@@ -1792,7 +1578,6 @@ showChatSection();
         // Main Content: assets visible, chat hidden.
         if (chatSection) chatSection.style.display = 'none';
         if (assetsSection) assetsSection.style.display = 'block';
-        if (wordpressDraftsSection) wordpressDraftsSection.style.display = 'none';
 
         // Reset objective specific elements
         if (selectedObjectiveTitleElement) selectedObjectiveTitleElement.textContent = 'Objective Title';
@@ -1920,57 +1705,5 @@ showChatSection();
                 }
             }
         });
-    }
-
-    if (wpDraftsListContainer) {
-        wpDraftsListContainer.addEventListener('click', async function(event) {
-            const target = event.target;
-            if (target.classList.contains('approve-wp-draft-btn')) {
-                event.stopPropagation();
-                const draftId = target.dataset.draftId;
-                if (!selectedProjectId || !draftId) {
-                    alert('Error: Project ID or Draft ID missing for approval.');
-                    return;
-                }
-
-                target.disabled = true;
-                target.textContent = 'Publishing...';
-
-                try {
-                    const response = await fetch(`/api/projects/${selectedProjectId}/wordpress/drafts/${draftId}/publish`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                    });
-                    if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({ error: 'Failed to publish draft.' }));
-                        throw new Error(errorData.error || `Server error: ${response.status}`);
-                    }
-                    const result = await response.json();
-                    // Option 1: Refresh the list
-                    // fetchAndRenderWordPressDrafts(selectedProjectId);
-                    // Option 2: Update the item directly
-                    target.textContent = 'Published';
-                    target.classList.remove('approve-wp-draft-btn');
-                    target.classList.add('published-wp-draft-info'); // For styling
-                    // Could also remove the button or replace with status text.
-                     const statusP = target.closest('.wp-draft-item').querySelector('p small'); // find status element
-                     if (statusP && statusP.textContent.includes('Status:')) {
-                         statusP.textContent = 'Status: published';
-                     }
-
-                    alert(result.message || 'Draft published successfully!');
-
-                } catch (error) {
-                    console.error('Error publishing WordPress draft:', error);
-                    alert(`Error publishing draft: ${error.message}`);
-                    target.disabled = false;
-                    target.textContent = 'Approve & Publish';
-                }
-            }
-        });
-    }
-
-    if (backToProjectsFromWpDraftsButton) {
-        backToProjectsFromWpDraftsButton.addEventListener('click', showProjectsSection);
     }
 });

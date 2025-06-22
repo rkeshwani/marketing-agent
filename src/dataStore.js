@@ -122,7 +122,7 @@ function addProject(projectData) {
     newProject.googleDriveRefreshToken = projectData.googleDriveRefreshToken || null;
     newProject.assets = projectData.assets || [];
 
-    // WordPress fields
+    // Assign WordPress fields
     newProject.wordpressUrl = projectData.wordpressUrl || null;
     newProject.wordpressUsername = projectData.wordpressUsername || null;
     newProject.wordpressApplicationPassword = projectData.wordpressApplicationPassword || null;
@@ -185,7 +185,7 @@ function updateProjectById(projectId, updateData) {
         if (updateData.googleDriveRefreshToken !== undefined) project.googleDriveRefreshToken = updateData.googleDriveRefreshToken;
         if (updateData.assets !== undefined) project.assets = updateData.assets;
 
-        // Update WordPress fields if they are present in updateData
+        // Update WordPress fields if provided
         if (updateData.wordpressUrl !== undefined) project.wordpressUrl = updateData.wordpressUrl;
         if (updateData.wordpressUsername !== undefined) project.wordpressUsername = updateData.wordpressUsername;
         if (updateData.wordpressApplicationPassword !== undefined) project.wordpressApplicationPassword = updateData.wordpressApplicationPassword;
@@ -223,7 +223,18 @@ function addObjective(objectiveData, projectId) {
         return null; // Or throw an error
     }
     // Corrected constructor arguments: projectId, title, brief
-    const newObjective = new Objective(projectId, objectiveData.title, objectiveData.brief);
+    // Ensure title and brief are strings
+    const title = String(objectiveData.title || '');
+    const brief = String(objectiveData.brief || '');
+    const newObjective = new Objective(projectId, title, brief);
+
+    // Validation check for the newObjective instance
+    if (typeof newObjective !== 'object' || newObjective === null || !newObjective.hasOwnProperty('id') || !newObjective.hasOwnProperty('title')) {
+        console.error('CRITICAL: newObjective is not a valid Objective instance right after construction!');
+        console.error('Objective Data:', JSON.stringify(objectiveData));
+        console.error('Constructed newObjective:', JSON.stringify(newObjective));
+        return null; // Or throw new Error('Failed to create valid Objective instance');
+    }
 
     // If plan structure is provided in objectiveData and needs to overwrite/extend default
     if (objectiveData.plan) {
@@ -316,32 +327,5 @@ module.exports = {
     updateObjectiveById,
     deleteObjectiveById,
     addMessageToObjectiveChat,
-    saveDataToFile, // Exporting for potential external use, though primarily internal
-    getWordpressCredentials,
-    saveWordpressCredentials
+    saveDataToFile // Exporting for potential external use, though primarily internal
 };
-
-// --- WordPress Credential Functions ---
-async function getWordpressCredentials(projectId) {
-  const project = findProjectById(projectId);
-  if (project && project.wordpressUrl && project.wordpressUsername && project.wordpressApplicationPassword) {
-    return {
-      url: project.wordpressUrl,
-      username: project.wordpressUsername,
-      applicationPassword: project.wordpressApplicationPassword,
-    };
-  }
-  return null;
-}
-
-async function saveWordpressCredentials(projectId, { url, username, applicationPassword }) {
-  const project = findProjectById(projectId);
-  if (!project) {
-    throw new Error(`Project with ID ${projectId} not found.`);
-  }
-  return updateProjectById(projectId, {
-    wordpressUrl: url,
-    wordpressUsername: username,
-    wordpressApplicationPassword: applicationPassword,
-  });
-}

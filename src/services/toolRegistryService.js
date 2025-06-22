@@ -244,6 +244,76 @@ const toolSchemas = [
       },
       required: ["url"]
     }
+  },
+  {
+    name: "create_wordpress_draft",
+    description: "Creates a new draft post in the WordPress site linked to the project. The agent will need the project ID, title, and content for the draft.",
+    parameters: {
+      type: "object",
+      properties: {
+        projectId: {
+          type: "string",
+          description: "The ID of the current project."
+        },
+        title: {
+          type: "string",
+          description: "The title for the draft post."
+        },
+        content: {
+          type: "string",
+          description: "The HTML content for the draft post."
+        }
+      },
+      required: ["projectId", "title", "content"]
+    }
+  },
+  {
+    name: "publish_wordpress_draft",
+    description: "Publishes an existing draft post (by its WordPress Post ID) in the WordPress site linked to the project. The agent can optionally update the title and content when publishing.",
+    parameters: {
+      type: "object",
+      properties: {
+        projectId: {
+          type: "string",
+          description: "The ID of the current project."
+        },
+        postId: {
+          type: "integer",
+          description: "The ID of the WordPress post (draft) to publish."
+        },
+        title: {
+          type: "string",
+          description: "Optional: New title for the post. If not provided, the existing title is used."
+        },
+        content: {
+          type: "string",
+          description: "Optional: New HTML content for the post. If not provided, the existing content is used."
+        }
+      },
+      required: ["projectId", "postId"]
+    }
+  },
+  {
+    name: "create_and_publish_wordpress_post",
+    description: "Creates a new post and immediately publishes it on the WordPress site linked to the project. The agent will need the project ID, title, and content.",
+    parameters: {
+      type: "object",
+      properties: {
+        projectId: {
+          type: "string",
+          description: "The ID of the current project."
+        },
+        title: {
+          type: "string",
+          description: "The title for the post."
+        },
+        content: {
+          type: "string",
+          description: "The HTML content for the post."
+        }
+      },
+      required: ["projectId", "title", "content"]
+    }
   }
 ];
 
