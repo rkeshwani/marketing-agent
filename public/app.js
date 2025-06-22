@@ -13,6 +13,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const createProjectForm = document.getElementById('create-project-form');
     const projectNameInput = document.getElementById('project-name');
     const projectDescriptionInput = document.getElementById('project-description');
+    const wordpressUrlInput = document.getElementById('wordpress-url');
+    const wordpressUsernameInput = document.getElementById('wordpress-username');
+    const wordpressAppPasswordInput = document.getElementById('wordpress-app-password');
     // const selectedProjectNameElement = document.getElementById('selected-project-name'); // No longer used directly
     // New buttons for social media connection
     const connectFacebookBtn = document.getElementById('connect-facebook-btn');
@@ -812,15 +815,43 @@ showChatSection();
         clearContainer(createProjectForm, '.error-message');
         const name = projectNameInput.value.trim();
         const description = projectDescriptionInput.value.trim();
+        const wordpressUrl = wordpressUrlInput.value.trim();
+        const wordpressUsername = wordpressUsernameInput.value.trim();
+        const wordpressApplicationPassword = wordpressAppPasswordInput.value; // Don't trim password
+
         if (!name) {
             displayError('Project name is required.', createProjectForm);
             return;
         }
+
+        // Optional: Basic validation for WordPress fields if they are partially filled
+        if (wordpressUrl || wordpressUsername || wordpressApplicationPassword) {
+            if (!wordpressUrl || !wordpressUsername || !wordpressApplicationPassword) {
+                displayError('To configure WordPress, please provide URL, Username, and Application Password.', createProjectForm);
+                return;
+            }
+            // Optional: Basic URL validation
+            try {
+                new URL(wordpressUrl);
+            } catch (e) {
+                displayError('Invalid WordPress URL format.', createProjectForm);
+                return;
+            }
+        }
+
+        const projectData = {
+            name,
+            description,
+            wordpressUrl: wordpressUrl || null, // Send null if empty
+            wordpressUsername: wordpressUsername || null, // Send null if empty
+            wordpressApplicationPassword: wordpressApplicationPassword || null, // Send null if empty
+        };
+
         try {
             const response = await fetch('api/projects', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, description }),
+                body: JSON.stringify(projectData),
             });
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({ error: 'Failed to create project' }));
@@ -830,6 +861,10 @@ showChatSection();
             await fetchProjects(); // Refresh the list which also updates the `projects` array
             projectNameInput.value = '';
             projectDescriptionInput.value = '';
+            wordpressUrlInput.value = '';
+            wordpressUsernameInput.value = '';
+            wordpressAppPasswordInput.value = '';
+
 
             // Start project context workflow
             if (newProject && newProject.id) {
