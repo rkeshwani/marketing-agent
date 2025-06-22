@@ -12,6 +12,7 @@ const http = require('http');
 const https = require('https');
 const { getPrompt } = require('./promptProvider'); // Import getPrompt
 const linkedinService = require('./linkedinService'); // Added for LinkedIn
+const wordPressTool = require('../tools/wordpressTool'); // Added for WordPress
 
 // Internal utility function to sanitize text for LLM consumption
 async function sanitizeTextForLLM(rawText) {
@@ -649,8 +650,49 @@ module.exports = {
     execute_google_ads_create_ad_from_config,
     execute_dynamic_asset_script, // Export new function
     execute_post_to_linkedin, // Added LinkedIn post execution
-    execute_browse_web_tool // Added browse_web tool execution
+    execute_browse_web_tool, // Added browse_web tool execution
+    // WordPress Tools
+    execute_create_wordpress_draft,
+    execute_publish_wordpress_draft,
+    execute_create_and_publish_wordpress_post
 };
+
+// --- WordPress Tool Functions ---
+async function execute_create_wordpress_draft(params, projectIdFromExecutor) {
+    // params already includes projectId as per our schema.
+    // Using params.projectId as the tool function expects it in its single argument object.
+    console.log(`ToolExecutor: Executing create_wordpress_draft for project ${params.projectId}`, params);
+    try {
+        const result = await wordPressTool.createWordPressDraft(params);
+        return JSON.stringify(result);
+    } catch (error) {
+        console.error(`Error in execute_create_wordpress_draft for project ${params.projectId}:`, error.message);
+        return JSON.stringify({ error: `Failed to create WordPress draft: ${error.message}` });
+    }
+}
+
+async function execute_publish_wordpress_draft(params, projectIdFromExecutor) {
+    console.log(`ToolExecutor: Executing publish_wordpress_draft for project ${params.projectId}`, params);
+    try {
+        const result = await wordPressTool.publishWordPressDraft(params);
+        return JSON.stringify(result);
+    } catch (error) {
+        console.error(`Error in execute_publish_wordpress_draft for project ${params.projectId}:`, error.message);
+        return JSON.stringify({ error: `Failed to publish WordPress draft: ${error.message}` });
+    }
+}
+
+async function execute_create_and_publish_wordpress_post(params, projectIdFromExecutor) {
+    console.log(`ToolExecutor: Executing create_and_publish_wordpress_post for project ${params.projectId}`, params);
+    try {
+        const result = await wordPressTool.createAndPublishWordPressPost(params);
+        return JSON.stringify(result);
+    } catch (error) {
+        console.error(`Error in execute_create_and_publish_wordpress_post for project ${params.projectId}:`, error.message);
+        return JSON.stringify({ error: `Failed to create and publish WordPress post: ${error.message}` });
+    }
+}
+
 
 // --- Web Browser Tool Function ---
 async function execute_browse_web_tool(url, projectId) {

@@ -15,7 +15,8 @@
     "googleapis": "^149.0.0",
     "microsandbox": "^0.1.0",
     "multer": "^2.0.0",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.7.0",
+    "wordpress-rest-api": "^0.7.0"
   },
   "devDependencies": {
     "@babel/core": "^7.27.4",

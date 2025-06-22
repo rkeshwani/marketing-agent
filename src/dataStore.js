@@ -122,6 +122,11 @@ function addProject(projectData) {
     newProject.googleDriveRefreshToken = projectData.googleDriveRefreshToken || null;
     newProject.assets = projectData.assets || [];
 
+    // Assign WordPress fields
+    newProject.wordpressUrl = projectData.wordpressUrl || null;
+    newProject.wordpressUsername = projectData.wordpressUsername || null;
+    newProject.wordpressApplicationPassword = projectData.wordpressApplicationPassword || null;
+
     projects.push(newProject);
     console.log(`[dataStore.addProject] Added project "${newProject.name}" with id "${newProject.id}". Current project count: ${projects.length}. Project IDs: ${JSON.stringify(projects.map(p=>p.id))}`);
     saveDataToFile(); // Save after adding a new project
@@ -179,6 +184,11 @@ function updateProjectById(projectId, updateData) {
         if (updateData.googleDriveAccessToken !== undefined) project.googleDriveAccessToken = updateData.googleDriveAccessToken;
         if (updateData.googleDriveRefreshToken !== undefined) project.googleDriveRefreshToken = updateData.googleDriveRefreshToken;
         if (updateData.assets !== undefined) project.assets = updateData.assets;
+
+        // Update WordPress fields if provided
+        if (updateData.wordpressUrl !== undefined) project.wordpressUrl = updateData.wordpressUrl;
+        if (updateData.wordpressUsername !== undefined) project.wordpressUsername = updateData.wordpressUsername;
+        if (updateData.wordpressApplicationPassword !== undefined) project.wordpressApplicationPassword = updateData.wordpressApplicationPassword;
 
         project.updatedAt = new Date();
         saveDataToFile(); // Save after updating a project

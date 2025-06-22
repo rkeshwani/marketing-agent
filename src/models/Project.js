@@ -37,6 +37,11 @@ class Project {
         // Project context fields
         this.projectContextQuestions = [];
         this.projectContextAnswers = {};
+
+        // WordPress fields
+        this.wordpressUrl = null;
+        this.wordpressUsername = null;
+        this.wordpressApplicationPassword = null;
     }
 }
 
