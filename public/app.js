@@ -66,6 +66,18 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeContextModalBtn = document.getElementById('close-context-modal-btn'); // Optional, ensure it exists in HTML
     const contextAnswersForm = document.getElementById('context-answers-form'); // Ensure this form wraps questions and submit button
 
+    // WordPress Configuration Modal Elements
+    const wordpressConfigModal = document.getElementById('wordpress-config-modal');
+    const wordpressConfigForm = document.getElementById('wordpress-config-form');
+    const closeWordPressModalBtn = document.getElementById('close-wordpress-modal-btn');
+    const wordpressConfigProjectIdInput = document.getElementById('wordpress-config-project-id');
+    const modalWordPressUrlInput = document.getElementById('modal-wordpress-url');
+    const modalWordPressUsernameInput = document.getElementById('modal-wordpress-username');
+    const modalWordPressAppPasswordInput = document.getElementById('modal-wordpress-app-password');
+    const saveWordPressConfigBtn = document.getElementById('save-wordpress-config-btn');
+    const disconnectWordPressBtn = document.getElementById('disconnect-wordpress-btn');
+    const wordpressConfigModalError = document.getElementById('wordpress-config-modal-error');
+
 
     // --- State ---
     let projects = [];
@@ -639,6 +651,18 @@ document.addEventListener('DOMContentLoaded', () => {
             addObjectiveBtn.dataset.projectId = project.id;
             actionsDiv.appendChild(addObjectiveBtn);
 
+            // WordPress Connect/Manage Button
+            let wpButton = document.createElement('button');
+            wpButton.dataset.projectId = project.id;
+            if (project.wordpressUrl && project.wordpressUsername) { // Check if WP is configured
+                wpButton.textContent = 'Manage WordPress';
+                wpButton.classList.add('manage-wordpress-btn');
+            } else {
+                wpButton.textContent = 'Connect to WordPress';
+                wpButton.classList.add('connect-wordpress-btn');
+            }
+            actionsDiv.appendChild(wpButton);
+
             li.appendChild(actionsDiv);
 
 
@@ -712,8 +736,176 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (titleInput) titleInput.focus();
             }
             // The main project item click (for navigation) is handled by the listener on the `li` itself.
+
+            // WordPress button handlers
+            if (target.classList.contains('connect-wordpress-btn')) {
+                event.stopPropagation();
+                openWordPressConfigModal(target.dataset.projectId);
+            } else if (target.classList.contains('manage-wordpress-btn')) {
+                event.stopPropagation();
+                openWordPressConfigModal(target.dataset.projectId, true); // true indicates it's for managing existing
+            }
         });
     }
+
+    // --- WordPress Config Modal Functions ---
+    function openWordPressConfigModal(projectId, isManaging = false) {
+        if (!wordpressConfigModal || !wordpressConfigForm) {
+            console.error('WordPress config modal elements not found.');
+            return;
+        }
+        wordpressConfigProjectIdInput.value = projectId;
+        wordpressConfigForm.reset(); // Clear previous values
+        wordpressConfigModalError.style.display = 'none';
+        wordpressConfigModalError.textContent = '';
+
+        const project = projects.find(p => p.id === projectId);
+
+        if (isManaging && project) {
+            modalWordPressUrlInput.value = project.wordpressUrl || '';
+            modalWordPressUsernameInput.value = project.wordpressUsername || '';
+            // Password field remains blank for security, placeholder guides user
+            modalWordPressAppPasswordInput.placeholder = 'Password set - enter new to change, or leave blank to keep current';
+            saveWordPressConfigBtn.textContent = 'Save Changes';
+            disconnectWordPressBtn.style.display = 'inline-block';
+        } else {
+            modalWordPressAppPasswordInput.placeholder = 'Enter Application Password';
+            saveWordPressConfigBtn.textContent = 'Save Connection';
+            disconnectWordPressBtn.style.display = 'none';
+        }
+        wordpressConfigModal.style.display = 'block';
+    }
+
+    function closeWordPressConfigModal() {
+        if (wordpressConfigModal) {
+            wordpressConfigModal.style.display = 'none';
+        }
+    }
+
+    async function handleWordPressConfigSave(event) {
+        event.preventDefault();
+        if (!wordpressConfigForm || !wordpressConfigProjectIdInput) return;
+
+        const projectId = wordpressConfigProjectIdInput.value;
+        const url = modalWordPressUrlInput.value.trim();
+        const username = modalWordPressUsernameInput.value.trim();
+        const password = modalWordPressAppPasswordInput.value; // Don't trim password for submission
+
+        wordpressConfigModalError.style.display = 'none';
+        wordpressConfigModalError.textContent = '';
+
+        if (!url || !username || !password) {
+            // If password field is empty AND we are in "Save Changes" mode (meaning a password might already exist)
+            // then it's okay to not provide a password if they don't want to change it.
+            // However, the tool requires a password to function.
+            // For "Save Connection" (new), all fields are required.
+            // For "Save Changes", if they blank out URL or Username, that's like disconnecting those, but password needs care.
+            // The backend API for Project update should handle `null` for password if it's not changing.
+            // But wordpressTool requires a password. This implies if they want to keep existing password,
+            // they shouldn't submit an empty one if the other fields are present.
+            // The current HTML has `required` on all fields. Let's stick to that for now.
+            // If password field is empty, it means they are *not* setting/changing the password.
+            // The backend should only update password if a new value is provided.
+            // For simplicity of this form, if they provide URL and Username, they MUST provide a password.
+            // If they are editing and URL/Username exist, and password is blank, it means "keep old password".
+            // This logic needs to be handled carefully on how `null` vs empty string for password is sent to backend.
+            // My backend `updateProjectById` updates if `updateData.wordpressApplicationPassword !== undefined`.
+            // So, if password field is empty, we should NOT send `wordpressApplicationPassword` in the payload,
+            // unless we are intending to clear it (which is disconnect logic).
+
+            // Sticking to HTML5 `required` for now, which means all must be filled to submit.
+            // This implies changing any part of WP config requires re-entering password.
+            // This is simpler and more secure than trying to manage "keep old password" via empty field.
+            // User will be guided by placeholder text.
+             if (!url || !username ) { // Password is required by HTML5 if field is there
+                wordpressConfigModalError.textContent = 'WordPress URL and Username are required. Password must also be provided to save/update.';
+                wordpressConfigModalError.style.display = 'block';
+                return;
+            }
+             // If the password field itself is empty, and it's required by the form, this check is redundant
+             // but good for explicit clarity if HTML5 validation is bypassed or fails.
+             if (!password) {
+                wordpressConfigModalError.textContent = 'WordPress Application Password is required.';
+                wordpressConfigModalError.style.display = 'block';
+                return;
+             }
+        }
+
+        try {
+            new URL(url); // Basic URL validation
+        } catch (e) {
+            wordpressConfigModalError.textContent = 'Invalid WordPress URL format.';
+            wordpressConfigModalError.style.display = 'block';
+            return;
+        }
+
+        const payload = {
+            wordpressUrl: url,
+            wordpressUsername: username,
+            // Only include password in payload if it's been entered.
+            // This allows user to change URL/username without necessarily re-typing/changing password
+            // if the backend handles password update conditionally.
+            // However, my Project.js model and datastore update logic will set it to null if not provided in updateData.
+            // So, for now, always send it if the form validation requires it.
+            // If the password field is NOT `required` and can be blank to "keep existing", then this needs more complex logic.
+            // Given current HTML `required` on password, it will always be sent if form submits.
+            wordpressApplicationPassword: password
+        };
+
+        try {
+            const response = await fetch(`api/projects/${projectId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({ error: 'Failed to save WordPress configuration.' }));
+                throw new Error(errorData.error || `Server error: ${response.status}`);
+            }
+
+            await fetchProjects(); // Refresh project list to update button states
+            closeWordPressConfigModal();
+            // TODO: Add a more prominent success notification like for context answers
+            alert('WordPress configuration saved successfully!');
+
+        } catch (error) {
+            wordpressConfigModalError.textContent = `Error: ${error.message}`;
+            wordpressConfigModalError.style.display = 'block';
+        }
+    }
+
+    async function handleWordPressDisconnect(projectId) {
+        if (!projectId) return;
+
+        if (confirm('Are you sure you want to disconnect WordPress for this project? This will remove the stored credentials.')) {
+            const payload = {
+                wordpressUrl: null,
+                wordpressUsername: null,
+                wordpressApplicationPassword: null,
+            };
+            try {
+                const response = await fetch(`api/projects/${projectId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: 'Failed to disconnect WordPress.' }));
+                    throw new Error(errorData.error || `Server error: ${response.status}`);
+                }
+                await fetchProjects(); // Refresh project list
+                closeWordPressConfigModal();
+                alert('WordPress disconnected successfully.');
+
+            } catch (error) {
+                wordpressConfigModalError.textContent = `Error: ${error.message}`; // Show error in modal if still open
+                wordpressConfigModalError.style.display = 'block';
+                alert(`Failed to disconnect WordPress: ${error.message}`); // Also show alert
+            }
+        }
+    }
+
 
     async function handleCreateObjectiveSubmit(event, projectId) {
         event.preventDefault();
@@ -1549,6 +1741,33 @@ showChatSection();
 
     // --- Initial Load ---
     if (projectContextModal) projectContextModal.style.display = 'none'; // Ensure modal is hidden initially
+    if (wordpressConfigModal) wordpressConfigModal.style.display = 'none'; // Ensure WP modal is hidden initially
+
+
+    // WordPress Modal Listeners
+    if (closeWordPressModalBtn) {
+        closeWordPressModalBtn.addEventListener('click', closeWordPressConfigModal);
+    }
+    if (wordpressConfigForm) {
+        wordpressConfigForm.addEventListener('submit', handleWordPressConfigSave);
+    }
+    if (disconnectWordPressBtn) {
+        disconnectWordPressBtn.addEventListener('click', () => {
+            const projectId = wordpressConfigProjectIdInput.value;
+            handleWordPressDisconnect(projectId);
+        });
+    }
+
+    // Window listener for closing modals by clicking outside (optional, but good UX)
+    window.addEventListener('click', (event) => {
+        if (event.target === projectContextModal) {
+            projectContextModal.style.display = 'none';
+        }
+        if (event.target === wordpressConfigModal) {
+            closeWordPressConfigModal();
+        }
+    });
+
 
     // Initial setup for form toggles - Call them once sections are displayed.
     // showProjectsSection and showObjectivesSection will now handle calling setupFormToggle.

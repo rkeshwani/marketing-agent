@@ -145,6 +145,35 @@
                 </div>
             </div>
 
+            <!-- WordPress Configuration Modal -->
+            <div id="wordpress-config-modal" class="modal" style="display: none;">
+                <div class="modal-content">
+                    <span class="close-button" id="close-wordpress-modal-btn">&times;</span>
+                    <h2>WordPress Configuration</h2>
+                    <form id="wordpress-config-form">
+                        <input type="hidden" id="wordpress-config-project-id">
+                        <div>
+                            <label for="modal-wordpress-url">WordPress Site URL:</label>
+                            <input type="url" id="modal-wordpress-url" placeholder="https://your-wordpress-site.com" required>
+                        </div>
+                        <div>
+                            <label for="modal-wordpress-username">WordPress Username:</label>
+                            <input type="text" id="modal-wordpress-username" placeholder="Your WordPress username" required>
+                        </div>
+                        <div>
+                            <label for="modal-wordpress-app-password">WordPress Application Password:</label>
+                            <input type="password" id="modal-wordpress-app-password" placeholder="Enter new or existing password" required>
+                            <small>Use an <a href="https://wordpress.org/documentation/article/application-passwords/" target="_blank">Application Password</a>. If saved, field is blank for security; enter new to change.</small>
+                        </div>
+                        <div id="wordpress-config-modal-error" class="error-message" style="display: none; margin-top: 10px;"></div>
+                        <div class="modal-actions">
+                            <button type="submit" id="save-wordpress-config-btn">Save Changes</button>
+                            <button type="button" id="disconnect-wordpress-btn" style="display: none; margin-left: 10px; background-color: #dc3545;">Disconnect WordPress</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
         </main>
 
         <footer>
