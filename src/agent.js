@@ -363,7 +363,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
         // Status remains 'approved', currentStepIndex remains 0.
         // No need to update originalPlan here, that's the template.
 
-        dataStore.updateObjective(objective); // Save the refreshed plan
+        dataStore.updateObjectiveById(objective.id, objective); // Save the refreshed plan
         console.log(`Agent: Plan for recurring objective ${objectiveId} refreshed with new context.`);
     } catch (error) {
         console.error(`Agent: Error refreshing plan for recurring objective ${objectiveId}:`, error);
@@ -517,8 +517,8 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
                     // Proceed to next step despite summarization error
                     objective.plan.currentStepIndex = currentStepIndex + 1;
                     objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
-                    dataStore.updateObjectiveById(objectiveId, objective);
-                    dataStore.updateObjective(objective);
+                    // dataStore.updateObjectiveById(objectiveId, objective); // This line is redundant, the next one updates the whole object.
+                    dataStore.updateObjectiveById(objective.id, objective);
                     return {
                         message: finalMessageForStep,
                         currentStep: currentStepIndex,
@@ -642,7 +642,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
         // --- End Recurrence Logic ---
 
         // Update objective in dataStore after recurrence handling
-        dataStore.updateObjective(objective);
+        dataStore.updateObjectiveById(objective.id, objective);
 
         return {
             message: finalMessageForStep ? 'Plan instance completed! Last step result: ' + finalMessageForStep : 'Plan instance completed!',
@@ -686,7 +686,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
     // --- End Recurrence Check ---
 
     objective.plan.status = 'completed'; // Ensure status is 'completed' if no recurrence logic changes it
-    dataStore.updateObjective(objective); // Update the objective
+    dataStore.updateObjectiveById(objective.id, objective); // Update the objective
 
     return {
       message: 'All plan steps completed!', // General message for this state
@@ -743,7 +743,7 @@ async function initializeAgent(objectiveId) {
         objective.plan.status = 'error_generating_plan';
         objective.plan.steps = [];
         objective.plan.questions = [`Failed to generate plan: ${error.message}`];
-        dataStore.updateObjective(objective);
+        dataStore.updateObjectiveById(objective.id, objective);
         throw new Error(`Failed to generate plan: ${error.message}`); // Re-throw to inform caller
     }
     const { planSteps, questions } = planData;
