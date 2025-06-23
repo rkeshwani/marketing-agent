@@ -25,16 +25,11 @@ async function fetchGeminiResponse(userInput, chatHistory, projectAssets = []) {
   // Assuming tool name is at t.name.name based on previous attempt, if not, this might need adjustment
   console.log('GeminiService (fetchGeminiResponse): Available tools -', tools.map(t => t.name && t.name.name ? t.name.name : t.name));
 
-
-  // Specific case for plan generation (remains unchanged as per subtask instructions)
-  if (userInput.startsWith("Based on the following marketing objective:")) {
-    console.log('GeminiService (fetchGeminiResponse): Detected plan generation prompt, returning simulated structured plan string from PromptProvider.');
-    const match = userInput.match(/Title: "(.*?)"/);
-    const title = match && match[1] ? match[1] : "Unknown Title"; // Extract title for the prompt
-    return await getPrompt('services/geminiService/simulated_plan_generation', { title: title });
-  }
-
   // --- Real Gemini API Call ---
+  // The specific case for plan generation that returned a simulated string has been removed.
+  // Plan generation is now handled by the `generatePlanForObjective` function,
+  // which constructs a detailed prompt and calls this `fetchGeminiResponse` function.
+
   const GEMINI_API_KEY = config.GEMINI_API_KEY;
   const GEMINI_API_ENDPOINT = config.GEMINI_API_ENDPOINT;
 
@@ -164,7 +159,7 @@ async function fetchGeminiResponse(userInput, chatHistory, projectAssets = []) {
 
     const response = await axios.post(`${GEMINI_API_ENDPOINT}:generateContent?key=${GEMINI_API_KEY}`, apiRequestBody, {
       headers: {
-        // 'Authorization': `Bearer ${GEMINI_API_KEY}`, // Corrected, was `config.GEMINI_API_KEY` which is the same
+        'Authorization': `Bearer ${GEMINI_API_KEY}`, // Reinstated Authorization header
         'Content-Type': 'application/json'
       }
     });
