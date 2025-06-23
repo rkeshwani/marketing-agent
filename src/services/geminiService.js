@@ -159,7 +159,7 @@ async function fetchGeminiResponse(userInput, chatHistory, projectAssets = []) {
 
     const response = await axios.post(`${GEMINI_API_ENDPOINT}:generateContent?key=${GEMINI_API_KEY}`, apiRequestBody, {
       headers: {
-        'Authorization': `Bearer ${GEMINI_API_KEY}`, // Reinstated Authorization header
+        // 'Authorization': `Bearer ${GEMINI_API_KEY}`, // Removed Authorization header
         'Content-Type': 'application/json'
       }
     });

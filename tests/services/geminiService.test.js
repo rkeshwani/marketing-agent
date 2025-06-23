@@ -181,7 +181,7 @@ describe('GeminiService', () => {
                     ]),
                     tools: [{ functionDeclarations: getAllToolSchemas() }]
                 }),
-                { headers: { 'Authorization': `Bearer ${config.GEMINI_API_KEY}`, 'Content-Type': 'application/json' } }
+                { headers: { 'Content-Type': 'application/json' } } // Authorization header removed
             );
         });
 
