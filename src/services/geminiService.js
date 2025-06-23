@@ -30,6 +30,12 @@ async function fetchGeminiResponse(userInput, chatHistory, projectAssets = []) {
   // Plan generation is now handled by the `generatePlanForObjective` function,
   // which constructs a detailed prompt and calls this `fetchGeminiResponse` function.
 
+  // TEST MODIFICATION REMOVED
+  // if (userInput && typeof userInput === 'string' && userInput.startsWith("Based on the following marketing objective:")) {
+  //   console.log("TEST: Simulating API error for plan generation in fetchGeminiResponse");
+  //   throw new Error("Simulated API 401 Unauthorized for plan generation test.");
+  // }
+
   const GEMINI_API_KEY = config.GEMINI_API_KEY;
   const GEMINI_API_ENDPOINT = config.GEMINI_API_ENDPOINT;
 
@@ -228,50 +234,66 @@ async function generatePlanForObjective(objective, projectAssets = []) {
   });
 
   // Call the existing fetchGeminiResponse with the detailed prompt
-  const geminiResponseString = await fetchGeminiResponse(prompt, [], projectAssets); // Pass projectAssets
-  console.log('GeminiService (generatePlanForObjective): Received raw response for parsing:\n', geminiResponseString);
+  try {
+    const geminiResponseString = await fetchGeminiResponse(prompt, [], projectAssets); // Pass projectAssets
+    console.log('GeminiService (generatePlanForObjective): Received raw response for parsing:\n', geminiResponseString);
 
-  // Ensure geminiResponseString is a string before splitting
-  if (typeof geminiResponseString !== 'string') {
-    console.error('GeminiService (generatePlanForObjective): Expected a string response for plan generation, but received:', typeof geminiResponseString, geminiResponseString);
-    // Handle error appropriately - perhaps return empty plan/questions or throw
-    return { planSteps: [], questions: ["Error: Plan generation failed due to unexpected response type."] };
-  }
-
-  const planSteps = [];
-  const questions = [];
-  const lines = geminiResponseString.split('\n');
-  let parsingPlan = false;
-  let parsingQuestions = false;
-
-  for (const line of lines) {
-    if (line.toUpperCase().startsWith('PLAN:')) {
-      parsingPlan = true;
-      parsingQuestions = false;
-      continue;
+    // Ensure geminiResponseString is a string before splitting
+    if (typeof geminiResponseString !== 'string') {
+      console.error('GeminiService (generatePlanForObjective): Expected a string response for plan generation, but received:', typeof geminiResponseString, geminiResponseString);
+      return {
+        planSteps: [],
+        questions: ["Error: Plan generation failed due to an unexpected internal response type. Please try again."],
+        planError: true,
+        errorMessageForUser: "I received an unexpected internal response while trying to generate the plan. Would you like to try again?",
+        canRetryPlanGeneration: true
+      };
     }
-    if (line.toUpperCase().startsWith('QUESTIONS:')) {
-      parsingQuestions = true;
-      parsingPlan = false;
-      if (line.toUpperCase().includes("NONE")) {
-        // If "QUESTIONS: None", we stop and questions array remains empty.
-        break;
+
+    const planSteps = [];
+    const questions = [];
+    const lines = geminiResponseString.split('\n');
+    let parsingPlan = false;
+    let parsingQuestions = false;
+
+    for (const line of lines) {
+      if (line.toUpperCase().startsWith('PLAN:')) {
+        parsingPlan = true;
+        parsingQuestions = false;
+        continue;
       }
-      continue;
+      if (line.toUpperCase().startsWith('QUESTIONS:')) {
+        parsingQuestions = true;
+        parsingPlan = false;
+        if (line.toUpperCase().includes("NONE")) {
+          break;
+        }
+        continue;
+      }
+
+      if (parsingPlan && line.startsWith('- ')) {
+        planSteps.push(line.substring(2).replace(/\s*\[API:.*, Content:.*\]$/, '').trim());
+      } else if (parsingQuestions && line.startsWith('- ')) {
+        questions.push(line.substring(2).trim());
+      }
     }
 
-    if (parsingPlan && line.startsWith('- ')) {
-      // Basic extraction of step description, removing the [API: ..., Content: ...] part
-      planSteps.push(line.substring(2).replace(/\s*\[API:.*, Content:.*\]$/, '').trim());
-    } else if (parsingQuestions && line.startsWith('- ')) {
-      questions.push(line.substring(2).trim());
-    }
+    console.log('GeminiService (generatePlanForObjective): Parsed steps -', planSteps);
+    console.log('GeminiService (generatePlanForObjective): Parsed questions -', questions);
+
+    return { planSteps, questions, planError: false }; // Indicate success
+
+  } catch (error) {
+    console.error('GeminiService (generatePlanForObjective): Error calling fetchGeminiResponse or parsing its result:', error);
+    const userFriendlyMessage = `I encountered an issue while trying to generate the plan (details: ${error.message}). Would you like to try again?`;
+    return {
+      planSteps: [],
+      questions: [userFriendlyMessage], // Put the user-friendly message here for now
+      planError: true,
+      errorMessageForUser: userFriendlyMessage,
+      canRetryPlanGeneration: true
+    };
   }
-
-  console.log('GeminiService (generatePlanForObjective): Parsed steps -', planSteps);
-  console.log('GeminiService (generatePlanForObjective): Parsed questions -', questions);
-
-  return { planSteps, questions };
 }
 
 module.exports = {
