@@ -737,26 +737,46 @@ async function initializeAgent(objectiveId) {
     let planData;
     try {
         planData = await geminiService.generatePlanForObjective(objective, projectAssets);
-    // console.log('Debug: planData from geminiService:', JSON.stringify(planData));
-    } catch (error) {
-        console.error(`Agent: Error generating plan for objective ${objectiveId}:`, error);
-        objective.plan.status = 'error_generating_plan';
-        objective.plan.steps = [];
-        objective.plan.questions = [`Failed to generate plan: ${error.message}`];
-        dataStore.updateObjectiveById(objective.id, objective);
-        throw new Error(`Failed to generate plan: ${error.message}`); // Re-throw to inform caller
-    }
-    const { planSteps, questions } = planData;
-    // console.log('Debug: planSteps:', JSON.stringify(planSteps), 'questions:', JSON.stringify(questions));
 
-    // Update the objective's plan
-    // Ensure objective.plan.steps and objective.plan.questions are arrays
-    objective.plan.steps = Array.isArray(planSteps) ? planSteps : [];
-    objective.plan.questions = Array.isArray(questions) ? questions : [];
-    objective.plan.status = 'pending_approval'; // Or 'generated_pending_review'
+        if (planData.planError) {
+            console.error(`Agent: Error generating plan for objective ${objectiveId}: ${planData.errorMessageForUser}`);
+            objective.plan.status = 'error_generating_plan';
+            objective.plan.steps = [];
+            // Use the user-friendly message for questions, or a specific retry prompt
+            objective.plan.questions = [planData.errorMessageForUser + " You can try again by typing '/retry plan' or '/regenerate plan'."];
+            objective.plan.canRetryPlanGeneration = planData.canRetryPlanGeneration; // Store the retry flag
+            dataStore.updateObjectiveById(objective.id, objective);
+            // We might not want to throw a generic error here if the UI is meant to handle the retry message.
+            // For now, let's re-throw to keep existing top-level error handling aware, but this could be refined.
+            throw new Error(planData.errorMessageForUser);
+        }
+
+        const { planSteps, questions } = planData;
+
+        objective.plan.steps = Array.isArray(planSteps) ? planSteps : [];
+        objective.plan.questions = Array.isArray(questions) ? questions : [];
+        objective.plan.status = 'pending_approval';
+        objective.plan.canRetryPlanGeneration = false; // Reset retry flag on successful generation
+
+    } catch (error) { // This will catch errors from generatePlanForObjective if it throws, or the re-throw above
+        console.error(`Agent: Overall error in initializeAgent for objective ${objectiveId}:`, error.message);
+        // Ensure status reflects error if not already set by the specific planError block
+        if (objective.plan.status !== 'error_generating_plan') {
+            objective.plan.status = 'error_generating_plan';
+            objective.plan.steps = [];
+            objective.plan.questions = [error.message.includes("Would you like to try again?") ? error.message : `Failed to generate plan: ${error.message}. You can try again by typing '/retry plan' or '/regenerate plan'.`];
+            objective.plan.canRetryPlanGeneration = true;
+        }
+        dataStore.updateObjectiveById(objective.id, objective);
+        throw error; // Re-throw original or new error to inform caller
+    }
+    // const { planSteps, questions } = planData; // Moved inside the try if successful
+
+    // Update the objective's plan - this part is now conditional
+    // Ensure objective.plan.steps and objective.plan.questions are arrays - handled above
 
     // Handle recurring objectives: store the original plan
-    if (objective.isRecurring) {
+    if (objective.isRecurring && objective.plan.status === 'pending_approval') { // Only store if plan generation was successful
         objective.originalPlan = {
             steps: JSON.parse(JSON.stringify(planSteps)), // Deep copy
             questions: JSON.parse(JSON.stringify(questions)), // Deep copy

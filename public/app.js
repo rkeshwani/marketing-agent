@@ -512,9 +512,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Scenario 2: Plan already exists and has content, or its status indicates it's processed.
                     // This includes 'pending_approval' plans that *do* have steps (already generated).
                     renderPlan(currentObjective.plan);
-                    if (currentObjective.plan.status === 'approved' || currentObjective.plan.status === 'in_progress') {
+                    // if (currentObjective.plan.status === 'approved' || currentObjective.plan.status === 'in_progress') {
                         fetchChatHistory(objectiveId);
-                    }
+                    // }
                     // Message for 'pending_approval' is handled by renderPlan.
 
                 } else {

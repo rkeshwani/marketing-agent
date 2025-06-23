@@ -5,7 +5,7 @@ Contextual Brief: "{{userPromptContent}}"
 AVAILABLE_ASSETS:
 {{availableAssets}}
 
-Please generate a strategic plan. The plan should consist of clear, actionable steps.
+Please generate a strategic plan. The plan should consist of clear, actionable steps. Include what tools are needed as well.
 For each step, consider if it requires:
 1. Accessing social media APIs (e.g., for posting, fetching data).
 2. Creating new content (e.g., text, images, videos).
