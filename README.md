@@ -174,6 +174,7 @@ The application uses a data store abstraction to manage project and objective da
     - Available options:
         - `flatfile`: Uses a local JSON file (`data.json`) for storage. Simple, no external dependencies, but not suitable for production scale.
         - `mongodb`: Uses [MongoDB](https://www.mongodb.com/) as the data store. Requires a running MongoDB instance.
+        - `firestore`: Uses [Google Cloud Firestore](https://cloud.google.com/firestore) as the data store. Requires a Google Cloud Platform project and appropriate authentication.
     - To implement a new provider:
         1. Create a new class in `src/providers/` that implements `src/interfaces/DataStoreInterface.js`.
         2. Update `src/dataStore.js` to include your new provider in the selection logic based on `DATA_PROVIDER`.
@@ -184,6 +185,14 @@ The application uses a data store abstraction to manage project and objective da
         - Default: `mongodb://localhost:27017`
     - **`MONGODB_DB_NAME`**: The name of the database to use within your MongoDB instance.
         - Default: `agentic_chat_js_db`
+
+- **Firestore Specific Configuration (if `DATA_PROVIDER="firestore"`)**:
+    - **`GCLOUD_PROJECT_ID`**: Your Google Cloud Project ID where Firestore is enabled.
+        - If not set, the Firestore client library might try to infer it from the environment (e.g., when running on GCP services).
+    - **`GOOGLE_APPLICATION_CREDENTIALS`**: Path to your Google Cloud service account key file (JSON).
+        - This is the recommended way for authentication when running outside of Google Cloud environments.
+        - If not set, the client library will attempt to use Application Default Credentials (ADC), which are automatically available in many Google Cloud environments (e.g., Cloud Run, Cloud Functions, GCE).
+        - For local development, you can set this after authenticating via `gcloud auth application-default login`.
 
 ### LinkedIn Scopes and Permissions
 The application requires the following OAuth scopes for LinkedIn integration. These are requested during the "Connect LinkedIn" process:

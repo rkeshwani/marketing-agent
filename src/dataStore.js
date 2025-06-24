@@ -1,26 +1,46 @@
 // src/dataStore.js
 const path = require('path');
 const FlatFileStore = require('./providers/FlatFileStore');
-const MongoDbStore = require('./providers/MongoDbStore'); // Added MongoDB provider
+const MongoDbStore = require('./providers/MongoDbStore');
+const FirestoreStore = require('./providers/FirestoreStore'); // Added Firestore provider
 
 // --- Configuration ---
 const DATA_PROVIDER = process.env.DATA_PROVIDER || 'flatfile'; // Default to flatfile
+
+// MongoDB Config
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017';
 const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || 'agentic_chat_js_db';
+
+// FlatFile Config
 const DATA_FILE_PATH = path.join(__dirname, '..', 'data.json');
+
+// Firestore Config
+const GCLOUD_PROJECT_ID = process.env.GCLOUD_PROJECT_ID; // e.g., your-gcp-project-id
+const GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS; // Path to service account key file
 
 let store;
 
 // --- Instantiate Provider based on Configuration ---
-if (DATA_PROVIDER.toLowerCase() === 'mongodb') {
-    console.log(`Initializing MongoDB data store with URI: ${MONGODB_URI} and DB: ${MONGODB_DB_NAME}`);
-    store = new MongoDbStore(MONGODB_URI, MONGODB_DB_NAME);
-} else if (DATA_PROVIDER.toLowerCase() === 'flatfile') {
-    console.log(`Initializing FlatFileStore with path: ${DATA_FILE_PATH}`);
-    store = new FlatFileStore(DATA_FILE_PATH);
-} else {
-    console.error(`Invalid DATA_PROVIDER specified: ${DATA_PROVIDER}. Defaulting to FlatFileStore.`);
-    store = new FlatFileStore(DATA_FILE_PATH);
+switch (DATA_PROVIDER.toLowerCase()) {
+    case 'mongodb':
+        console.log(`Initializing MongoDB data store with URI: ${MONGODB_URI} and DB: ${MONGODB_DB_NAME}`);
+        store = new MongoDbStore(MONGODB_URI, MONGODB_DB_NAME);
+        break;
+    case 'firestore':
+        if (!GCLOUD_PROJECT_ID && !GOOGLE_APPLICATION_CREDENTIALS) {
+            console.warn('Firestore provider selected, but GCLOUD_PROJECT_ID or GOOGLE_APPLICATION_CREDENTIALS are not set. Client may rely on ADC discovery.');
+        }
+        console.log(`Initializing Firestore data store for project ID: ${GCLOUD_PROJECT_ID || 'default (ADC)'}. KeyFile: ${GOOGLE_APPLICATION_CREDENTIALS || 'ADC'}`);
+        store = new FirestoreStore(GCLOUD_PROJECT_ID, GOOGLE_APPLICATION_CREDENTIALS);
+        break;
+    case 'flatfile':
+    default: // Default to FlatFileStore if provider is unknown or 'flatfile'
+        if (DATA_PROVIDER.toLowerCase() !== 'flatfile') {
+            console.warn(`Invalid DATA_PROVIDER specified: ${DATA_PROVIDER}. Defaulting to FlatFileStore.`);
+        }
+        console.log(`Initializing FlatFileStore with path: ${DATA_FILE_PATH}`);
+        store = new FlatFileStore(DATA_FILE_PATH);
+        break;
 }
 
 // --- Initialize and Load Data ---
