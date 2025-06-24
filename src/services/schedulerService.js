@@ -12,10 +12,10 @@ class SchedulerService {
      * Checks for objectives that are scheduled to run, updates their status,
      * and prepares them for execution.
      */
-    checkScheduledTasks() {
+    async checkScheduledTasks() { // Added async
         console.log('SchedulerService: Checking for scheduled tasks...');
         const now = new Date();
-        const objectives = this.dataStore.getAllObjectives(); // Assuming dataStore has this method
+        const objectives = await this.dataStore.getAllObjectives(); // Added await, Assuming dataStore has this method
 
         if (!objectives || objectives.length === 0) {
             console.log('SchedulerService: No objectives found.');
@@ -45,7 +45,8 @@ class SchedulerService {
                 objective.nextRunTime = null; // Clear it to indicate it's now active and not pending for this specific time
 
                 // Save the updated objective
-                this.dataStore.updateObjective(objective); // Assuming this method updates the entire object
+                // Changed updateObjective to updateObjectiveById and pass the whole objective as updateData
+                await this.dataStore.updateObjectiveById(objective.id, objective); // Added await
 
                 triggeredObjectives.push({
                     id: objective.id,
