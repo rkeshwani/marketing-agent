@@ -16,6 +16,7 @@
     "@google-cloud/firestore": "^7.7.0",
     "@aws-sdk/client-dynamodb": "^3.556.0",
     "@aws-sdk/lib-dynamodb": "^3.556.0",
+    "@azure/cosmos": "^4.0.0",
     "express-session": "^1.18.1",
     "faiss-node": "^0.5.1",
     "googleapis": "^149.0.0",

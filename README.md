@@ -175,6 +175,8 @@ The application uses a data store abstraction to manage project and objective da
         - `flatfile`: Uses a local JSON file (`data.json`) for storage. Simple, no external dependencies, but not suitable for production scale.
         - `mongodb`: Uses [MongoDB](https://www.mongodb.com/) as the data store. Requires a running MongoDB instance.
         - `firestore`: Uses [Google Cloud Firestore](https://cloud.google.com/firestore) as the data store. Requires a Google Cloud Platform project and appropriate authentication.
+        - `dynamodb`: Uses [Amazon DynamoDB](https://aws.amazon.com/dynamodb/) as the data store. Requires an AWS account, configured tables, and appropriate IAM permissions.
+        - `cosmosdb`: Uses [Azure Cosmos DB](https://azure.microsoft.com/en-us/services/cosmos-db/) (SQL API) as the data store. Requires an Azure account and a configured Cosmos DB instance.
     - To implement a new provider:
         1. Create a new class in `src/providers/` that implements `src/interfaces/DataStoreInterface.js`.
         2. Update `src/dataStore.js` to include your new provider in the selection logic based on `DATA_PROVIDER`.
@@ -205,6 +207,17 @@ The application uses a data store abstraction to manage project and objective da
         - This table should have a primary key `id` (String).
         - **Important**: For efficient querying of objectives by `projectId`, a Global Secondary Index (GSI) is recommended on this table. The `DynamoDbStore.js` provider will attempt to use a GSI named `ObjectivesByProjectIdIndex` with `projectId` as its partition key. If this GSI doesn't exist, it will fall back to a less efficient Scan operation.
     - **AWS Credentials**: Ensure your environment is configured with AWS credentials (e.g., via `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` environment variables, or an IAM role if running on AWS infrastructure). The application needs permissions to read, write, and query the specified DynamoDB tables.
+
+- **Azure Cosmos DB Specific Configuration (if `DATA_PROVIDER="cosmosdb"`)**:
+    - **`COSMOS_ENDPOINT`**: The URI endpoint of your Azure Cosmos DB account (e.g., `https://your-account.documents.azure.com:443/`). **Required.**
+    - **`COSMOS_KEY`**: The primary or secondary key for your Cosmos DB account. **Required.**
+    - **`COSMOS_DATABASE_ID`**: The ID of the database to use within your Cosmos DB account.
+        - Default: `agenticChatDB` (will be created by the provider if it doesn't exist).
+    - **`COSMOS_PROJECTS_CONTAINER_ID`**: The ID of the container for storing projects.
+        - Default: `Projects` (will be created with partition key `/id` by the provider if it doesn't exist).
+    - **`COSMOS_OBJECTIVES_CONTAINER_ID`**: The ID of the container for storing objectives.
+        - Default: `Objectives` (will be created with partition key `/projectId` by the provider if it doesn't exist).
+    - **Note on Partition Keys**: The `CosmosDbStore.js` provider is implemented with `/id` as the partition key for projects and `/projectId` for objectives. Understanding partition key implications for performance and cost in Cosmos DB is crucial for production deployments. Operations that need to find an objective by its `id` without knowing its `projectId` will perform a cross-partition query, which is less efficient.
 
 ### LinkedIn Scopes and Permissions
 The application requires the following OAuth scopes for LinkedIn integration. These are requested during the "Connect LinkedIn" process:

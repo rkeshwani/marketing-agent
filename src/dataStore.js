@@ -3,7 +3,8 @@ const path = require('path');
 const FlatFileStore = require('./providers/FlatFileStore');
 const MongoDbStore = require('./providers/MongoDbStore');
 const FirestoreStore = require('./providers/FirestoreStore');
-const DynamoDbStore = require('./providers/DynamoDbStore'); // Added DynamoDB provider
+const DynamoDbStore = require('./providers/DynamoDbStore');
+const CosmosDbStore = require('./providers/CosmosDbStore'); // Added CosmosDB provider
 
 // --- Configuration ---
 const DATA_PROVIDER = process.env.DATA_PROVIDER || 'flatfile'; // Default to flatfile
@@ -24,6 +25,12 @@ const AWS_REGION = process.env.AWS_REGION; // e.g., 'us-east-1'
 const DYNAMODB_PROJECTS_TABLE = process.env.DYNAMODB_PROJECTS_TABLE || 'agentic-chat-projects';
 const DYNAMODB_OBJECTIVES_TABLE = process.env.DYNAMODB_OBJECTIVES_TABLE || 'agentic-chat-objectives';
 
+// Cosmos DB Config
+const COSMOS_ENDPOINT = process.env.COSMOS_ENDPOINT; // e.g., https://your-account.documents.azure.com:443/
+const COSMOS_KEY = process.env.COSMOS_KEY; // Primary key
+const COSMOS_DATABASE_ID = process.env.COSMOS_DATABASE_ID || 'agenticChatDB';
+const COSMOS_PROJECTS_CONTAINER_ID = process.env.COSMOS_PROJECTS_CONTAINER_ID || 'Projects';
+const COSMOS_OBJECTIVES_CONTAINER_ID = process.env.COSMOS_OBJECTIVES_CONTAINER_ID || 'Objectives';
 
 let store;
 
@@ -46,6 +53,17 @@ switch (DATA_PROVIDER.toLowerCase()) {
         }
         console.log(`Initializing DynamoDB data store in region: ${AWS_REGION || 'default SDK region'}. Tables: ${DYNAMODB_PROJECTS_TABLE}, ${DYNAMODB_OBJECTIVES_TABLE}`);
         store = new DynamoDbStore(AWS_REGION, DYNAMODB_PROJECTS_TABLE, DYNAMODB_OBJECTIVES_TABLE);
+        break;
+    case 'cosmosdb':
+        if (!COSMOS_ENDPOINT || !COSMOS_KEY) {
+            console.error('CosmosDB provider selected, but COSMOS_ENDPOINT or COSMOS_KEY is not set. Cannot initialize CosmosDbStore.');
+            // Fallback to flatfile or throw error
+            console.warn('Defaulting to FlatFileStore due to missing CosmosDB credentials.');
+            store = new FlatFileStore(DATA_FILE_PATH);
+        } else {
+            console.log(`Initializing CosmosDB data store. Endpoint: ${COSMOS_ENDPOINT ? "provided" : "MISSING!"}, DB: ${COSMOS_DATABASE_ID}`);
+            store = new CosmosDbStore(COSMOS_ENDPOINT, COSMOS_KEY, COSMOS_DATABASE_ID, COSMOS_PROJECTS_CONTAINER_ID, COSMOS_OBJECTIVES_CONTAINER_ID);
+        }
         break;
     case 'flatfile':
     default: // Default to FlatFileStore if provider is unknown or 'flatfile'
