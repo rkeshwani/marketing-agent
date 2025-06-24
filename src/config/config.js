@@ -37,6 +37,27 @@ const config = {
   LINKEDIN_APP_ID: process.env.LINKEDIN_APP_ID || '',
   LINKEDIN_APP_SECRET: process.env.LINKEDIN_APP_SECRET || '',
 
+  // Vector Store Configuration
+  VECTOR_STORE_PROVIDER: process.env.VECTOR_STORE_PROVIDER || 'inMemory', // 'inMemory', 'pinecone', 'weaviate', 'chroma', 'faiss', 'pgvector'
+  PINECONE_API_KEY: process.env.PINECONE_API_KEY || '',
+  // PINECONE_ENVIRONMENT: process.env.PINECONE_ENVIRONMENT || '', // For pod-based indexes; serverless doesn't strictly need it for basic ops.
+  PINECONE_INDEX_NAME: process.env.PINECONE_INDEX_NAME || 'my-default-index', // User should configure this
+
+  WEAVIATE_SCHEME: process.env.WEAVIATE_SCHEME || 'http', // 'http' or 'https'
+  WEAVIATE_HOST: process.env.WEAVIATE_HOST || 'localhost:8080', // e.g., 'localhost:8080' or 'your-weaviate-cluster.weaviate.network'
+  WEAVIATE_API_KEY: process.env.WEAVIATE_API_KEY || '', // If using Weaviate Cloud Services (WCS) or API key auth
+  WEAVIATE_CLASS_NAME_PREFIX: process.env.WEAVIATE_CLASS_NAME_PREFIX || 'ProjectAsset', // Prefix for Weaviate classes (projectId will be appended)
+
+  CHROMA_PATH: process.env.CHROMA_PATH || '', // e.g., 'http://localhost:8000' for remote, or empty/path for local
+  CHROMA_COLLECTION_NAME_PREFIX: process.env.CHROMA_COLLECTION_NAME_PREFIX || 'project-', // Prefix for collection names
+
+  FAISS_INDEX_PATH: process.env.FAISS_INDEX_PATH || './faiss_indices', // Directory to store FAISS index files and mappings
+  FAISS_DEFAULT_DIMENSION: parseInt(process.env.FAISS_DEFAULT_DIMENSION, 10) || 10, // Default dimension for embeddings
+
+  PGVECTOR_CONNECTION_STRING: process.env.PGVECTOR_CONNECTION_STRING || '', // e.g., 'postgresql://user:password@host:port/database'
+  PGVECTOR_TABLE_NAME_PREFIX: process.env.PGVECTOR_TABLE_NAME_PREFIX || 'project_vectors_', // Prefix for table names
+  PGVECTOR_DEFAULT_DIMENSION: parseInt(process.env.PGVECTOR_DEFAULT_DIMENSION, 10) || 10, // Default dimension for embeddings
+
   // Add other configurations as needed
 };
 

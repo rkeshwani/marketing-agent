@@ -1,16 +1,67 @@
 // src/services/vectorService.js
+const config = require('../config/config');
+const InMemoryVectorStore = require('./inMemoryVectorStore');
+const PineconeVectorStore = require('./pineconeVectorStore');
+const WeaviateVectorStore = require('./weaviateVectorStore');
+const ChromaVectorStore = require('./chromaVectorStore');
+const FaissVectorStore = require('./faissVectorStore');
+const PgvectorStore = require('./pgvectorStore');
+// Future: Import other vector stores like
+// const DatabaseVectorStore = require('./databaseVectorStore');
 
-const projectVectorStores = {}; // In-memory vector store
+let vectorStoreInstance;
 
 /**
- * Generates a vector embedding and tags for the given content.
- * Placeholder function: Simulates embedding and tagging.
+ * Initializes and returns the configured vector store instance.
+ * @returns {VectorStoreInterface} The vector store instance.
+ * @throws {Error} if the configured provider is not supported.
+ */
+function getVectorStore() {
+  if (!vectorStoreInstance) {
+    const provider = config.VECTOR_STORE_PROVIDER || 'inMemory'; // Default to inMemory
+    console.log(`VectorService: Initializing vector store with provider: ${provider}`);
+
+    switch (provider.toLowerCase()) {
+      case 'inmemory':
+        vectorStoreInstance = new InMemoryVectorStore();
+        break;
+      case 'pinecone':
+        vectorStoreInstance = new PineconeVectorStore();
+        break;
+      case 'weaviate':
+        vectorStoreInstance = new WeaviateVectorStore();
+        break;
+      case 'chroma':
+        vectorStoreInstance = new ChromaVectorStore();
+        break;
+      case 'faiss':
+        vectorStoreInstance = new FaissVectorStore();
+        break;
+      case 'pgvector':
+        vectorStoreInstance = new PgvectorStore();
+        break;
+      // Example for future providers:
+      // case 'database':
+      //   vectorStoreInstance = new DatabaseVectorStore(config.DATABASE_CONNECTION_STRING);
+      //   break;
+      default:
+        throw new Error(`Unsupported vector store provider: ${provider}`);
+    }
+  }
+  return vectorStoreInstance;
+}
+
+/**
+ * Generates a vector embedding for the given content.
+ * This function is kept separate as it's a utility for generating embeddings,
+ * not directly part of the storage mechanism.
+ * Placeholder function: Simulates embedding generation.
  * @param {string} content - The text content to process.
  * @returns {Promise<{vector: Array<number>, tags: Array<string>}>}
  */
 async function generateEmbedding(content) {
-  console.log(`VectorService: Generating embedding for content: "${content.substring(0, 50)}..."`);
-  // Simulate API call delay or processing time
+  console.log(`VectorService (EmbeddingUtil): Generating embedding for content: "${content.substring(0, 50)}..."`);
+  // Simulate API call delay or processing time for embedding generation
   await new Promise(resolve => setTimeout(resolve, 100));
 
   // Simulate a vector (e.g., 10-dimensional vector of random numbers)
@@ -23,97 +74,44 @@ async function generateEmbedding(content) {
 }
 
 /**
- * Calculates the Euclidean distance between two vectors.
- * @param {Array<number>} vec1 - The first vector.
- * @param {Array<number>} vec2 - The second vector.
- * @returns {number} The Euclidean distance.
- */
-function euclideanDistance(vec1, vec2) {
-  if (vec1.length !== vec2.length) {
-    throw new Error("Vectors must have the same dimensionality for Euclidean distance.");
-  }
-  return Math.sqrt(vec1.reduce((sum, val, index) => sum + (val - vec2[index])**2, 0));
-}
-
-/**
- * Adds or updates an asset's vector in the project's vector store.
+ * Adds or updates an asset's vector using the configured vector store.
  * @param {string} projectId - The ID of the project.
  * @param {string} assetId - The ID of the asset.
  * @param {Array<number>} vector - The vector embedding of the asset.
+ * @returns {Promise<void>}
  */
-function addAssetVector(projectId, assetId, vector) {
-  if (!projectVectorStores[projectId]) {
-    projectVectorStores[projectId] = [];
-  }
-  // Check if asset vector already exists and update, or add new
-  const existingAssetIndex = projectVectorStores[projectId].findIndex(item => item.assetId === assetId);
-  if (existingAssetIndex > -1) {
-    projectVectorStores[projectId][existingAssetIndex].vector = vector;
-    console.log(`VectorService: Updated vector for asset ${assetId} in project ${projectId}`);
-  } else {
-    projectVectorStores[projectId].push({ assetId, vector });
-    console.log(`VectorService: Added vector for asset ${assetId} to project ${projectId}`);
-  }
+async function addAssetVector(projectId, assetId, vector) {
+  const store = getVectorStore();
+  return store.addAssetVector(projectId, assetId, vector);
 }
 
 /**
- * Finds similar assets in a project based on a query vector.
+ * Finds similar assets using the configured vector store.
  * @param {string} projectId - The ID of the project.
  * @param {Array<number>} queryVector - The vector to find similarities against.
- * @param {number} topN - The number of similar assets to return.
+ * @param {number} [topN=5] - The number of similar assets to return.
  * @returns {Promise<Array<string>>} A promise that resolves to an array of similar asset IDs.
  */
 async function findSimilarAssets(projectId, queryVector, topN = 5) {
-  if (!projectVectorStores[projectId] || projectVectorStores[projectId].length === 0) {
-    console.log(`VectorService: No vectors found for project ${projectId} or project store empty.`);
-    return [];
-  }
-
-  const store = projectVectorStores[projectId];
-  if (store.some(item => item.vector.length !== queryVector.length)) {
-    console.error("VectorService: Query vector dimensionality does not match store vector dimensionality.");
-    // Or handle more gracefully, e.g. by filtering out non-matching vectors or throwing specific error
-    return []; // Or throw new Error("Dimensionality mismatch");
-  }
-
-  const distances = store.map(item => ({
-    assetId: item.assetId,
-    distance: euclideanDistance(queryVector, item.vector)
-  }));
-
-  distances.sort((a, b) => a.distance - b.distance);
-  console.log(`VectorService: Found ${distances.length} assets, returning top ${topN}`);
-  return distances.slice(0, topN).map(item => item.assetId);
+  const store = getVectorStore();
+  return store.findSimilarAssets(projectId, queryVector, topN);
 }
 
 /**
- * Removes an asset's vector from the project's vector store.
+ * Removes an asset's vector using the configured vector store.
  * @param {string} projectId - The ID of the project.
  * @param {string} assetId - The ID of the asset to remove.
+ * @returns {Promise<void>}
  */
-function removeAssetVector(projectId, assetId) {
-  if (projectVectorStores[projectId]) {
-    const initialLength = projectVectorStores[projectId].length;
-    projectVectorStores[projectId] = projectVectorStores[projectId].filter(item => item.assetId !== assetId);
-    if (projectVectorStores[projectId].length < initialLength) {
-      console.log(`VectorService: Removed vector for asset ${assetId} from project ${projectId}`);
-    } else {
-      console.log(`VectorService: No vector found for asset ${assetId} in project ${projectId} to remove.`);
-    }
-    // Optional: Clean up empty project store
-    if (projectVectorStores[projectId].length === 0) {
-      delete projectVectorStores[projectId];
-      console.log(`VectorService: Project store for ${projectId} is now empty and removed.`);
-    }
-  } else {
-    console.log(`VectorService: No vector store found for project ${projectId}. Nothing to remove.`);
-  }
+async function removeAssetVector(projectId, assetId) {
+  const store = getVectorStore();
+  return store.removeAssetVector(projectId, assetId);
 }
 
 module.exports = {
-  generateEmbedding,
+  generateEmbedding, // Utility function
   addAssetVector,
   findSimilarAssets,
-  removeAssetVector, // Export the new function
-  // euclideanDistance is not exported as it's a helper for findSimilarAssets
+  removeAssetVector,
+  getVectorStore, // Exporting for potential direct use or testing
 };
