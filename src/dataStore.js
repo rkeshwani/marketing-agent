@@ -2,7 +2,8 @@
 const path = require('path');
 const FlatFileStore = require('./providers/FlatFileStore');
 const MongoDbStore = require('./providers/MongoDbStore');
-const FirestoreStore = require('./providers/FirestoreStore'); // Added Firestore provider
+const FirestoreStore = require('./providers/FirestoreStore');
+const DynamoDbStore = require('./providers/DynamoDbStore'); // Added DynamoDB provider
 
 // --- Configuration ---
 const DATA_PROVIDER = process.env.DATA_PROVIDER || 'flatfile'; // Default to flatfile
@@ -15,8 +16,14 @@ const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || 'agentic_chat_js_db';
 const DATA_FILE_PATH = path.join(__dirname, '..', 'data.json');
 
 // Firestore Config
-const GCLOUD_PROJECT_ID = process.env.GCLOUD_PROJECT_ID; // e.g., your-gcp-project-id
-const GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS; // Path to service account key file
+const GCLOUD_PROJECT_ID = process.env.GCLOUD_PROJECT_ID;
+const GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+
+// DynamoDB Config
+const AWS_REGION = process.env.AWS_REGION; // e.g., 'us-east-1'
+const DYNAMODB_PROJECTS_TABLE = process.env.DYNAMODB_PROJECTS_TABLE || 'agentic-chat-projects';
+const DYNAMODB_OBJECTIVES_TABLE = process.env.DYNAMODB_OBJECTIVES_TABLE || 'agentic-chat-objectives';
+
 
 let store;
 
@@ -28,10 +35,17 @@ switch (DATA_PROVIDER.toLowerCase()) {
         break;
     case 'firestore':
         if (!GCLOUD_PROJECT_ID && !GOOGLE_APPLICATION_CREDENTIALS) {
-            console.warn('Firestore provider selected, but GCLOUD_PROJECT_ID or GOOGLE_APPLICATION_CREDENTIALS are not set. Client may rely on ADC discovery.');
+            console.warn('Firestore provider selected, but GCLOUD_PROJECT_ID or GOOGLE_APPLICATION_CREDENTIALS are not set. Client may rely on ADC discovery if running in GCP.');
         }
         console.log(`Initializing Firestore data store for project ID: ${GCLOUD_PROJECT_ID || 'default (ADC)'}. KeyFile: ${GOOGLE_APPLICATION_CREDENTIALS || 'ADC'}`);
         store = new FirestoreStore(GCLOUD_PROJECT_ID, GOOGLE_APPLICATION_CREDENTIALS);
+        break;
+    case 'dynamodb':
+        if (!AWS_REGION) {
+            console.warn('DynamoDB provider selected, but AWS_REGION is not set. SDK might try to infer it or use default, which could lead to issues.');
+        }
+        console.log(`Initializing DynamoDB data store in region: ${AWS_REGION || 'default SDK region'}. Tables: ${DYNAMODB_PROJECTS_TABLE}, ${DYNAMODB_OBJECTIVES_TABLE}`);
+        store = new DynamoDbStore(AWS_REGION, DYNAMODB_PROJECTS_TABLE, DYNAMODB_OBJECTIVES_TABLE);
         break;
     case 'flatfile':
     default: // Default to FlatFileStore if provider is unknown or 'flatfile'

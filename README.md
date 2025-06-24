@@ -194,6 +194,18 @@ The application uses a data store abstraction to manage project and objective da
         - If not set, the client library will attempt to use Application Default Credentials (ADC), which are automatically available in many Google Cloud environments (e.g., Cloud Run, Cloud Functions, GCE).
         - For local development, you can set this after authenticating via `gcloud auth application-default login`.
 
+- **Amazon DynamoDB Specific Configuration (if `DATA_PROVIDER="dynamodb"`)**:
+    - **`AWS_REGION`**: The AWS region where your DynamoDB tables are located (e.g., `us-east-1`, `eu-west-2`).
+        - This is a standard AWS SDK environment variable. If not set, the SDK might try to infer it from shared AWS config or an EC2 instance profile. It's best to set it explicitly.
+    - **`DYNAMODB_PROJECTS_TABLE`**: The name of your DynamoDB table for storing projects.
+        - Default: `agentic-chat-projects`
+        - This table should have a primary key `id` (String).
+    - **`DYNAMODB_OBJECTIVES_TABLE`**: The name of your DynamoDB table for storing objectives.
+        - Default: `agentic-chat-objectives`
+        - This table should have a primary key `id` (String).
+        - **Important**: For efficient querying of objectives by `projectId`, a Global Secondary Index (GSI) is recommended on this table. The `DynamoDbStore.js` provider will attempt to use a GSI named `ObjectivesByProjectIdIndex` with `projectId` as its partition key. If this GSI doesn't exist, it will fall back to a less efficient Scan operation.
+    - **AWS Credentials**: Ensure your environment is configured with AWS credentials (e.g., via `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` environment variables, or an IAM role if running on AWS infrastructure). The application needs permissions to read, write, and query the specified DynamoDB tables.
+
 ### LinkedIn Scopes and Permissions
 The application requires the following OAuth scopes for LinkedIn integration. These are requested during the "Connect LinkedIn" process:
 - **`r_liteprofile`**: Used to retrieve your basic profile information, such as your name and LinkedIn ID. This helps in personalizing the connection within the app.
