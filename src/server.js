@@ -1140,23 +1140,40 @@ app.post('/api/objectives/:objectiveId/chat', async (req, res) => {
     }
 
     try {
-        const objective = await dataStore.findObjectiveById(objectiveId); // Added await
+        const objective = await dataStore.findObjectiveById(objectiveId);
         if (!objective) {
             return res.status(404).json({ error: 'Objective not found' });
         }
 
-        // Get agent response using the objective's specific chat history
-        const agentResponse = await getAgentResponse(userInput, objective.chatHistory, objectiveId);
+        // For a non-streaming POST request, we expect a single consolidated response.
+        // getAgentResponse now returns an async generator. We need to consume it.
+        // Since this is the non-streaming endpoint, we'll pass stream: false (or rely on default)
+        // and collect the (expected single) result.
+        let agentResponsePayload;
+        // The getAgentResponse from agent.js already calls geminiService.fetchGeminiResponse (which is a generator)
+        // and processes its output (text or tool_call or structured object for plan status updates).
+        // So, getAgentResponse itself is not a generator.
+        agentResponsePayload = await getAgentResponse(userInput, objective.chatHistory, objectiveId, false);
+
 
         // Add user message to objective's chat history
-        await dataStore.addMessageToObjectiveChat(objectiveId, 'user', userInput); // Added await
+        await dataStore.addMessageToObjectiveChat(objectiveId, 'user', userInput);
         // Add agent response to objective's chat history
-        await dataStore.addMessageToObjectiveChat(objectiveId, 'agent', agentResponse); // Added await
+        // agentResponsePayload could be a string or an object (like for plan updates or asking user input)
+        await dataStore.addMessageToObjectiveChat(objectiveId, 'agent', agentResponsePayload);
 
-        res.json({ response: agentResponse });
+        // The response to the client should be the payload itself.
+        // If it's a string, it will be { response: "string" }.
+        // If it's an object (e.g. for plan status), it will be { response: { message: "...", planStatus: "..." } }
+        // Or, if the agent directly returns an object to be sent as JSON:
+        if (typeof agentResponsePayload === 'object' && agentResponsePayload !== null) {
+            res.json(agentResponsePayload); // Send the object as is
+        } else {
+            res.json({ response: agentResponsePayload }); // Wrap string in response object
+        }
 
     } catch (error) {
-        console.error(`Error in objective chat for ${objectiveId}:`, error);
+        console.error(`Error in POST objective chat for ${objectiveId}:`, error);
         // Check if the error is from the agent itself or a general server error
         if (error.message.startsWith('Agent:')) { // Assuming agent errors are prefixed
             res.status(500).json({ error: error.message });

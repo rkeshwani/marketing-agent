@@ -1501,6 +1501,8 @@ showChatSection();
         }
     }
 
+    let eventSource = null; // Keep a reference to the EventSource
+
     async function handleSendMessage() {
         const messageText = userInputElement.value.trim();
         if (!messageText) return;
@@ -1509,107 +1511,95 @@ showChatSection();
             return;
         }
 
-        addMessageToUI('user', messageText); // Display user's message immediately
-        userInputElement.value = ''; // Clear input field
+        addMessageToUI('user', messageText);
+        userInputElement.value = '';
+        sendButton.disabled = true; // Disable send button while streaming
+        userInputElement.disabled = true; // Disable input
 
-        try {
-            const response = await fetch(`api/objectives/${selectedObjectiveId}/chat`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ userInput: messageText }),
-            });
+        // Close any existing EventSource connection
+        if (eventSource) {
+            eventSource.close();
+        }
 
-            if (!response.ok) {
-                let errorData;
-                try {
-                    errorData = await response.json();
-                } catch (e) {
-                    errorData = { error: response.statusText };
-                }
-                throw new Error(errorData.error || `Server error: ${response.status}`);
-            }
+        // Create a new EventSource connection
+        const encodedUserInput = encodeURIComponent(messageText);
+        eventSource = new EventSource(`/api/objectives/${selectedObjectiveId}/chat/stream?userInput=${encodedUserInput}`);
 
-            const data = await response.json();
+        let agentMessageDiv = null; // To accumulate streamed text
 
-            if (data.planStatus) { // Check if response indicates a plan state update
-                const objective = objectives.find(o => o.id === selectedObjectiveId);
-                if (!objective) {
-                    console.error("Objective not found in local cache for plan update.");
-                    addMessageToUI('agent', "Error: Could not find objective to update its plan status.");
+        eventSource.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+
+                if (data.error) {
+                    console.error('SSE Error:', data.error);
+                    addMessageToUI('agent', `Error: ${data.error}`);
+                    eventSource.close();
+                    sendButton.disabled = false;
+                    userInputElement.disabled = false;
                     return;
                 }
-                if (!objective.plan) { // Ensure plan object exists
-                    objective.plan = { steps: [], questions: [], status: '', currentStepIndex: 0 };
+
+                if (data.event === 'endOfStream') {
+                    console.log('SSE: End of stream received.');
+                    eventSource.close();
+                    sendButton.disabled = false;
+                    userInputElement.disabled = false;
+                    agentMessageDiv = null; // Reset for next message
+                    // Potentially refresh chat history or plan state if needed after full response
+                    fetchAndDisplayPlan(selectedObjectiveId); // Refresh plan and chat
+                    return;
                 }
 
-                let agentMessageContent = "";
-                if (typeof data.message === 'object' && data.message !== null) {
-                    if (data.message.message && data.message.stepDescription) {
-                        agentMessageContent = `${data.message.stepDescription}\n\n${data.message.message}`;
-                    } else if (data.message.message) {
-                        agentMessageContent = data.message.message;
-                    } else if (data.message.text) {
-                        agentMessageContent = data.message.text;
-                    } else {
-                        agentMessageContent = JSON.stringify(data.message);
+                if (data.text) {
+                    if (!agentMessageDiv) {
+                        // Create a new div for this agent message stream
+                        agentMessageDiv = document.createElement('div');
+                        agentMessageDiv.classList.add('message', `agent-message`);
+                        chatOutput.appendChild(agentMessageDiv);
                     }
-                } else if (typeof data.message === 'string') {
-                    agentMessageContent = data.message;
-                } else {
-                    // Fallback for unexpected types or null/undefined if not caught by typeof string
-                    agentMessageContent = String(data.message || "Received an empty or unexpected message content.");
-                }
+                    // Append text to the current agent message div
+                    // For simplicity, appending directly. For complex markdown, might need more sophisticated update.
+                    agentMessageDiv.innerHTML += simpleMarkdownToHtml(data.text).replace(/^<p>|<\/p>$/g, ""); // Append and re-render
+                    chatOutput.scrollTop = chatOutput.scrollHeight;
+                } else if (data.tool_call) {
+                    addMessageToUI('agent', `Tool call requested: ${data.tool_call.name}(${JSON.stringify(data.tool_call.arguments)})`);
+                    // Further client-side handling for tool calls if necessary, or server handles it.
+                    // For now, assume server handles and this is informational.
+                } else if (data.planStatus) {
+                    // Handle plan status updates if they are sent via stream
+                    // This part might be complex if plan rendering needs to happen mid-stream
+                    const objective = objectives.find(o => o.id === selectedObjectiveId);
+                    if (objective && objective.plan) {
+                        let agentMessageContent = data.message || data.response || "Plan status updated.";
+                         if (typeof agentMessageContent === 'object') agentMessageContent = JSON.stringify(agentMessageContent);
 
-                if (data.planStatus === 'in_progress') {
-                    addMessageToUI('agent', agentMessageContent); // Use processed message
-                    objective.plan.status = 'in_progress';
-                    // data.currentStep is the index of the step *just processed*
-                    objective.plan.currentStepIndex = data.currentStep + 1;
-                    renderPlan(objective.plan);
-                } else if (data.planStatus === 'completed') {
-                    addMessageToUI('agent', agentMessageContent); // Use processed message
-                    objective.plan.status = 'completed';
-                    objective.plan.currentStepIndex = objective.plan.steps.length;
-                    renderPlan(objective.plan);
-                    // Optionally, further UI changes like disabling input:
-                    // userInputElement.disabled = true;
-                    // userInputElement.placeholder = "Objective completed!";
-                    // sendButton.disabled = true;
-                } else {
-                    // Fallback for other planStatuses.
-                    // agentMessageContent is already prepared based on data.message.
-                    // If data.response is preferred here, similar logic would be needed.
-                    // Assuming data.message is the primary source for this path.
-                    const agentResponse = data.response || agentMessageContent || "Received an update with unhandled plan status.";
-                    addMessageToUI('agent', agentResponse);
+                        addMessageToUI('agent', agentMessageContent);
+                        objective.plan.status = data.planStatus;
+                        if (data.currentStep !== undefined) {
+                             objective.plan.currentStepIndex = data.currentStep + (data.planStatus === 'in_progress' ? 1 : 0);
+                             if(data.planStatus === 'completed') objective.plan.currentStepIndex = objective.plan.steps.length;
+                        }
+                        renderPlan(objective.plan);
+                    }
                 }
-            } else { // Standard chat message without plan status
-                let agentResponseContent = "";
-                if (typeof data.response === 'object' && data.response !== null) {
-                    // For data.response, if it's an object, stringify it as its structure is not specified for special formatting.
-                    // Or attempt to find a 'message' or 'text' property as a common fallback.
-                    agentResponseContent = data.response.message || data.response.text || JSON.stringify(data.response);
-                } else if (typeof data.response === 'string') {
-                    agentResponseContent = data.response;
-                } else {
-                    agentResponseContent = String(data.response || "Received an empty or unexpected response.");
-                }
-                addMessageToUI('agent', agentResponseContent);
+                // Any other data types can be handled here
+            } catch (e) {
+                console.error('Error parsing SSE data:', e, event.data);
+                addMessageToUI('agent', 'Received malformed data from server.');
             }
+        };
 
-            // Optional: Add to local currentChatHistory if needed, but server is source of truth.
-            // For plan execution messages, data.message is the agent's response.
-            // For regular chat, data.response is the agent's response.
-            // const messageToStore = data.planStatus ? data.message : data.response;
-            // currentChatHistory.push({ speaker: 'user', content: messageText, timestamp: new Date() });
-            // currentChatHistory.push({ speaker: 'agent', content: messageToStore, timestamp: new Date() });
-
-        } catch (error) {
-            console.error('Error sending message to server:', error);
-            addMessageToUI('agent', `Error: ${error.message}`);
-        }
+        eventSource.onerror = function(error) {
+            console.error('EventSource failed:', error);
+            addMessageToUI('agent', 'Connection error with the server. Please try again.');
+            if (eventSource) {
+                eventSource.close();
+            }
+            sendButton.disabled = false;
+            userInputElement.disabled = false;
+            agentMessageDiv = null;
+        };
     }
 
     // --- Event Listeners ---

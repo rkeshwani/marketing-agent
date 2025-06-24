@@ -17,192 +17,247 @@ const { getPrompt } = require('./promptProvider'); // Assuming promptProvider.js
  * - An object for tool calls (e.g., `{ name: "tool_name", arguments: { ... } }`).
  * @throws {Error} If the API call fails or the response structure is unexpected.
  */
-async function fetchGeminiResponse(userInput, chatHistory, projectAssets = []) {
-  console.log('GeminiService (fetchGeminiResponse): Received input for API call -', userInput);
+// This is an async generator function
+async function* fetchGeminiResponse(userInput, chatHistory, projectAssets = [], stream = false) {
+  console.log('GeminiService (fetchGeminiResponse): Received input for API call -', userInput, 'Stream:', stream);
   console.log('GeminiService (fetchGeminiResponse): Received project assets:', projectAssets.length > 0 ? projectAssets.map(a => a.name) : 'No assets');
 
   const tools = getAllToolSchemas();
-  // Assuming tool name is at t.name.name based on previous attempt, if not, this might need adjustment
   console.log('GeminiService (fetchGeminiResponse): Available tools -', tools.map(t => t.name && t.name.name ? t.name.name : t.name));
-
-  // --- Real Gemini API Call ---
-  // The specific case for plan generation that returned a simulated string has been removed.
-  // Plan generation is now handled by the `generatePlanForObjective` function,
-  // which constructs a detailed prompt and calls this `fetchGeminiResponse` function.
-
-  // TEST MODIFICATION REMOVED
-  // if (userInput && typeof userInput === 'string' && userInput.startsWith("Based on the following marketing objective:")) {
-  //   console.log("TEST: Simulating API error for plan generation in fetchGeminiResponse");
-  //   throw new Error("Simulated API 401 Unauthorized for plan generation test.");
-  // }
 
   const GEMINI_API_KEY = config.GEMINI_API_KEY;
   const GEMINI_API_ENDPOINT = config.GEMINI_API_ENDPOINT;
 
   if (!GEMINI_API_KEY || !GEMINI_API_ENDPOINT) {
     console.error('GeminiService: API Key or Endpoint is missing in config.');
-    // If running in a test environment where config might not be fully populated,
-    // it might be desirable to not throw here but let a mock/test setup handle it.
-    // However, for general robustness, throwing an error is appropriate.
     throw new Error('Gemini API Key or Endpoint is not configured.');
   }
 
-  const requestBody = {
-    // The actual Gemini API expects a specific structure, often involving a "contents" array.
-    // This needs to be aligned with the Gemini API documentation for "generateContent".
-    // For now, structuring based on the subtask's description of `requestBody`.
-    // The prompt to Gemini should be constructed from userInput, chatHistory.
-    // Let's assume a simplified model where `userInput` is the main prompt
-    // and `chatHistory` and `projectAssets` are context.
-    // A more robust implementation would format `contents` like:
-    // contents: [
-    //   ...chatHistory.map(msg => ({ role: msg.role, parts: [{ text: msg.parts[0].text }] })), // Reformat history
-    //   { role: "user", parts: [{ text: userInput }] }
-    // ],
-    // tools: [{ functionDeclarations: tools }] // Gemini expects tools under a specific structure
-
-    // Simplified request body as per subtask direct fields:
-    userInput: userInput, // This might need to be part of a 'contents' structure
-    chatHistory: chatHistory, // This also might need to be part of 'contents'
-    projectAssets: projectAssets, // How assets are sent depends on API spec (e.g., inline data or references)
-    tools: tools // This likely needs to be formatted as per Gemini's "tool_config" or "tools"
+  const apiRequestBody = {
+    contents: [
+      ...chatHistory.map(item => {
+        let currentContent;
+        let role;
+        if (item.role && item.parts && item.parts.length > 0 && typeof item.parts[0].text !== 'undefined') {
+          role = item.role;
+          currentContent = item.parts[0].text;
+        } else {
+          role = (item.speaker === 'agent' || item.speaker === 'system') ? 'model' : 'user';
+          currentContent = item.content;
+        }
+        if (typeof currentContent === 'object' && currentContent !== null) {
+          currentContent = (currentContent.message && currentContent.stepDescription)
+            ? `${currentContent.stepDescription}\n\n${currentContent.message}`
+            : JSON.stringify(currentContent);
+        } else if (typeof currentContent !== 'string') {
+          currentContent = String(currentContent || '');
+        }
+        return { role: role, parts: [{ text: currentContent }] };
+      }),
+      {
+        role: "user",
+        parts: [{
+          text: (typeof userInput === 'object' && userInput !== null)
+                ? JSON.stringify(userInput)
+                : String(userInput || '')
+        }]
+      }
+    ],
+    tools: [{ functionDeclarations: tools }],
   };
 
-  console.log('GeminiService (fetchGeminiResponse): Making POST request to', GEMINI_API_ENDPOINT);
-  // Avoid logging potentially sensitive parts of projectAssets if they contain file content
-  // console.log('GeminiService (fetchGeminiResponse): Request body:', JSON.stringify(requestBody, null, 2));
+  if (projectAssets && projectAssets.length > 0) {
+    let assetsText = "\n\nProject Assets Context:\n";
+    projectAssets.forEach(asset => {
+      assetsText += `- Name: ${asset.name}, Type: ${asset.type}\n`;
+    });
+    const lastContent = apiRequestBody.contents[apiRequestBody.contents.length - 1];
+    if (lastContent && lastContent.role === "user" && lastContent.parts && lastContent.parts.length > 0) {
+      lastContent.parts[0].text += assetsText;
+    } else {
+      apiRequestBody.contents.push({ role: "user", parts: [{ text: "Context about project assets:" + assetsText }] });
+    }
+  }
+
+  const endpointSuffix = stream ? ':streamGenerateContent?alt=sse' : ':generateContent';
+  const fullEndpoint = `${GEMINI_API_ENDPOINT}${endpointSuffix}&key=${GEMINI_API_KEY}`;
+
+  console.log('GeminiService (fetchGeminiResponse): Sending to Gemini:', JSON.stringify(apiRequestBody, null, 2));
+  console.log('GeminiService (fetchGeminiResponse): Full Endpoint:', fullEndpoint);
+
 
   try {
-    // The actual request body for Gemini API's generateContent method should be like:
-    // {
-    //   "contents": [
-    //     // ... chat history formatted as user/model turns ...
-    //     { "role": "user", "parts": [{ "text": userInput }] }
-    //   ],
-    //   "tools": [ { "function_declarations": tools } ] // if tools are Google AI style function declarations
-    // }
-    // For this iteration, I will send the simpler requestBody and adjust if testing shows issues.
-    // The key is `Authorization: Bearer ${GEMINI_API_KEY}`.
-    // The subtask specifies `Authorization: Bearer ${config.GEMINI_API_KEY}` which is correct.
-    // It also specifies `axios.post(config.GEMINI_API_ENDPOINT, requestBody, { headers: { 'Authorization': ... } })`
+    if (stream) {
+      const response = await axios.post(fullEndpoint, apiRequestBody, {
+        headers: { 'Content-Type': 'application/json' },
+        responseType: 'stream'
+      });
 
-    const apiRequestBody = {
-        contents: [
-            ...chatHistory.map(item => {
-                let currentContent;
-                let role;
-
-                if (item.role && item.parts && item.parts.length > 0 && typeof item.parts[0].text !== 'undefined') {
-                    // Item has Gemini structure
-                    role = item.role;
-                    currentContent = item.parts[0].text;
-                    if (typeof currentContent === 'object' && currentContent !== null) {
-                        if (currentContent.message && currentContent.stepDescription) {
-                            currentContent = `${currentContent.stepDescription}\n\n${currentContent.message}`;
-                        } else {
-                            currentContent = JSON.stringify(currentContent);
-                        }
-                    } else if (typeof currentContent !== 'string') {
-                        currentContent = String(currentContent || '');
-                    }
-                    return { role: role, parts: [{ text: currentContent }] };
-                } else {
-                    // Item has original structure (speaker, content)
-                    role = 'user'; // Default role
-                    if (item.speaker === 'agent' || item.speaker === 'system') {
-                        role = 'model';
-                    } else if (item.speaker === 'user') {
-                        role = 'user';
-                    }
-                    currentContent = item.content;
-                    if (typeof currentContent === 'object' && currentContent !== null) {
-                        if (currentContent.message && currentContent.stepDescription) {
-                            currentContent = `${currentContent.stepDescription}\n\n${currentContent.message}`;
-                        } else {
-                            currentContent = JSON.stringify(currentContent);
-                        }
-                    } else if (typeof currentContent !== 'string') {
-                        currentContent = String(currentContent || '');
-                    }
-                    return { role: role, parts: [{ text: currentContent }] };
+      const streamParser = (dataStream) => {
+        let buffer = '';
+        return new Promise((resolve, reject) => {
+          dataStream.on('data', (chunk) => {
+            buffer += chunk.toString();
+            let boundary;
+            while ((boundary = buffer.indexOf('\n\n')) !== -1) {
+              const message = buffer.substring(0, boundary);
+              buffer = buffer.substring(boundary + 2);
+              if (message.startsWith('data: ')) {
+                try {
+                  const jsonString = message.substring(6); // Remove 'data: '
+                  // console.log("Raw JSON string from stream:", jsonString); // Debug log
+                  const parsed = JSON.parse(jsonString);
+                  // console.log("Parsed SSE chunk:", parsed); // Debug log
+                  yield parsed; // Yield the parsed JSON object
+                } catch (e) {
+                  console.error('GeminiService (fetchGeminiResponse): Error parsing stream chunk JSON:', e, "Chunk:", message.substring(6));
+                  // Optionally yield an error object or skip
                 }
-            }),
-            {
-                role: "user",
-                parts: [{
-                    text: (typeof userInput === 'object' && userInput !== null)
-                          ? JSON.stringify(userInput)
-                          : String(userInput || '')
-                }]
+              }
             }
-        ],
-        tools: [{ functionDeclarations: tools }],
-    };
-
-    // Add projectAssets information to the prompt if they exist
-    // This logic is placed *after* the chatHistory transformation.
-    if (projectAssets && projectAssets.length > 0) {
-        let assetsText = "\n\nProject Assets Context:\n";
-        projectAssets.forEach(asset => {
-            assetsText += `- Name: ${asset.name}, Type: ${asset.type}\n`;
-            // Do not include asset.content directly in the prompt unless it's text and brief.
+          });
+          dataStream.on('end', () => {
+            if (buffer.startsWith('data: ')) { // Process any remaining data
+                try {
+                    const jsonString = buffer.substring(6);
+                    // console.log("Raw JSON string from stream (end):", jsonString); // Debug log
+                    const parsed = JSON.parse(jsonString);
+                    // console.log("Parsed SSE chunk (end):", parsed); // Debug log
+                    yield parsed;
+                } catch (e) {
+                    console.error('GeminiService (fetchGeminiResponse): Error parsing final stream chunk JSON:', e, "Chunk:", buffer.substring(6));
+                }
+            }
+            resolve();
+          });
+          dataStream.on('error', (err) => {
+            console.error('GeminiService (fetchGeminiResponse): Stream error:', err);
+            reject(err);
+          });
         });
-        // Find the last user message and append to it, or add a new user message.
-        // Ensure there's always a user message to append to, or create one.
-        const lastContent = apiRequestBody.contents[apiRequestBody.contents.length - 1];
-        if (lastContent && lastContent.role === "user" && lastContent.parts && lastContent.parts.length > 0) {
-            lastContent.parts[0].text += assetsText;
-        } else {
-            // If the last message isn't a user message or parts are missing (unlikely after mapping),
-            // or if contents is empty (also unlikely if userInput is always added),
-            // add a new user message with asset context.
-            apiRequestBody.contents.push({ role: "user", parts: [{ text: "Context about project assets:" + assetsText }] });
+      };
+      // This part needs to be an async generator itself to yield values
+      // The promise from streamParser is not directly yieldable in the outer generator
+      // For now, this structure is incorrect for yielding chunks.
+      // The correct way is to iterate over the stream and yield parts directly.
+      // Let's refine this.
+
+      const dataStream = response.data;
+      let buffer = '';
+      for await (const chunk of dataStream) {
+        buffer += chunk.toString();
+        let eolIndex;
+        // The Gemini stream format might be a stream of JSON objects, not strictly SSE formatted in the raw HTTP stream from axios.
+        // The `alt=sse` parameter suggests the *API endpoint itself* will format it as SSE.
+        // So, we should expect `data: {...}\n\n` chunks.
+
+        // console.log("Stream chunk received:", chunk.toString()); // Log raw chunk
+
+        // Process buffer for SSE messages
+        while ((eolIndex = buffer.indexOf('\n\n')) !== -1) {
+            const messageLine = buffer.substring(0, eolIndex);
+            buffer = buffer.substring(eolIndex + 2); // Consume the message and the \n\n
+
+            if (messageLine.startsWith('data: ')) {
+                const jsonPayload = messageLine.substring(6).trim(); // Remove 'data: ' prefix
+                // console.log("Extracted JSON payload:", jsonPayload); // Log extracted payload
+                if (jsonPayload) {
+                    try {
+                        const parsedChunk = JSON.parse(jsonPayload);
+                        // console.log("Parsed chunk:", parsedChunk); // Log successfully parsed chunk
+                        if (parsedChunk.candidates && parsedChunk.candidates.length > 0) {
+                            const candidate = parsedChunk.candidates[0];
+                            if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+                                const part = candidate.content.parts[0];
+                                if (part.text) {
+                                    // console.log("Yielding text from stream:", part.text);
+                                    yield { text: part.text }; // Yield text chunks
+                                } else if (part.tool_call) {
+                                    // console.log("Yielding tool_call from stream:", part.tool_call);
+                                    yield { tool_call: part.tool_call }; // Yield tool call (usually at the end)
+                                    return; // Stop streaming after a tool call
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.error('GeminiService (fetchGeminiResponse): Error parsing JSON from stream:', e, "Payload:", jsonPayload);
+                    }
+                }
+            }
         }
-    }
-
-    console.log('GeminiService (fetchGeminiResponse): Sending to Gemini:', JSON.stringify(apiRequestBody, null, 2));
-
-
-    const response = await axios.post(`${GEMINI_API_ENDPOINT}:generateContent?key=${GEMINI_API_KEY}`, apiRequestBody, {
-      headers: {
-        // 'Authorization': `Bearer ${GEMINI_API_KEY}`, // Removed Authorization header
-        'Content-Type': 'application/json'
       }
-    });
+      // Process any remaining data in the buffer after the stream ends
+      if (buffer.startsWith('data: ')) {
+          const jsonPayload = buffer.substring(6).trim();
+          if (jsonPayload) {
+              try {
+                  const parsedChunk = JSON.parse(jsonPayload);
+                  if (parsedChunk.candidates && parsedChunk.candidates.length > 0) {
+                      const candidate = parsedChunk.candidates[0];
+                      if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+                          const part = candidate.content.parts[0];
+                          if (part.text) {
+                              yield { text: part.text };
+                          } else if (part.tool_call) {
+                              yield { tool_call: part.tool_call };
+                              return;
+                          }
+                      }
+                  }
+              } catch (e) {
+                  console.error('GeminiService (fetchGeminiResponse): Error parsing final JSON from stream:', e, "Payload:", jsonPayload);
+              }
+          }
+      }
 
-    console.log('GeminiService (fetchGeminiResponse): Raw API Response:', JSON.stringify(response.data, null, 2));
 
-    // Parse response as per subtask:
-    // { "candidates": [{ "content": { "parts": [{ "text": "..." }] } }] }
-    // or { "candidates": [{ "content": { "parts": [{ "tool_call": {...} }] } }] }
-    if (response.data && response.data.candidates && response.data.candidates.length > 0) {
-      const candidate = response.data.candidates[0];
-      if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
-        const part = candidate.content.parts[0];
-        if (part.tool_call) {
-          console.log('GeminiService (fetchGeminiResponse): Returning tool_call.');
-          return part.tool_call; // Return the tool_call object
-        }
-        if (part.text) {
-          console.log('GeminiService (fetchGeminiResponse): Returning text response.');
-          return part.text; // Return the text string
+    } else { // Non-streaming request
+      const response = await axios.post(fullEndpoint, apiRequestBody, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      console.log('GeminiService (fetchGeminiResponse): Raw API Response (non-stream):', JSON.stringify(response.data, null, 2));
+      if (response.data && response.data.candidates && response.data.candidates.length > 0) {
+        const candidate = response.data.candidates[0];
+        if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+          const part = candidate.content.parts[0];
+          if (part.tool_call) {
+            console.log('GeminiService (fetchGeminiResponse): Returning tool_call.');
+            yield part.tool_call; // Yield as an object for consistency, even though it's one item.
+            return;
+          }
+          if (part.text) {
+            console.log('GeminiService (fetchGeminiResponse): Returning text response.');
+            yield { text: part.text }; // Yield as an object for consistency
+            return;
+          }
         }
       }
+      console.error('GeminiService (fetchGeminiResponse): Unexpected API response structure (non-stream).', response.data);
+      throw new Error('Gemini API response structure was not as expected (non-stream).');
     }
-
-    console.error('GeminiService (fetchGeminiResponse): Unexpected API response structure.', response.data);
-    throw new Error('Gemini API response structure was not as expected.');
-
   } catch (error) {
     console.error('GeminiService (fetchGeminiResponse): Gemini API call failed.', error.message);
     if (error.response) {
       console.error('GeminiService (fetchGeminiResponse): API Error Response Data:', error.response.data);
       console.error('GeminiService (fetchGeminiResponse): API Error Response Status:', error.response.status);
+      // If it's a stream error, error.response.data might be a stream itself.
+      if (error.response.data && typeof error.response.data.on === 'function') {
+        let errorBody = '';
+        try {
+            for await (const chunk of error.response.data) {
+                errorBody += chunk;
+            }
+            console.error('GeminiService (fetchGeminiResponse): API Error Stream Body:', errorBody);
+        } catch (streamReadError) {
+            console.error('GeminiService (fetchGeminiResponse): Could not read error stream body:', streamReadError);
+        }
+      }
     }
-    // Re-throw the error so downstream functions can handle it.
+    // When throwing from an async generator, the generator is closed.
     throw new Error(`Gemini API call failed: ${error.message}`);
   }
 }
+
 
 async function generatePlanForObjective(objective, projectAssets = []) {
   console.log('GeminiService (generatePlanForObjective): Received objective -', objective.title);
@@ -297,7 +352,7 @@ async function generatePlanForObjective(objective, projectAssets = []) {
 }
 
 module.exports = {
-  fetchGeminiResponse,
+  fetchGeminiResponse, // Now an async generator
   generatePlanForObjective,
   generateProjectContextQuestions,
   structureProjectContextAnswers,
