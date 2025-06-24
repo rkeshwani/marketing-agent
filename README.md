@@ -137,10 +137,33 @@ The application uses a vector service for managing and searching asset embedding
     - Default: `inMemory`
     - Currently available options:
         - `inMemory`: Uses a transient, in-memory vector store. Suitable for development and testing. Data is lost when the application restarts.
+        - `pinecone`: Uses [Pinecone](https://www.pinecone.io/) as the vector store. Requires a Pinecone account and an existing index.
+        - `weaviate`: Uses [Weaviate](https://weaviate.io/) as the vector store. Requires a running Weaviate instance.
+        - `chroma`: Uses [ChromaDB](https://www.trychroma.com/) as the vector store. Can connect to a remote Chroma server or run locally (in-memory or file-based).
+        - `faiss`: Uses [FAISS](https://faiss.ai/) (via `faiss-node`) for local, file-based vector storage. Index files are stored locally.
     - To implement a new provider (e.g., Pinecone, a database-backed store):
         1. Create a new class in `src/services/` that implements `src/services/vectorStoreInterface.js`.
         2. Update `src/services/vectorService.js` to include your new provider in the `getVectorStore` factory function.
         3. Set the `VECTOR_STORE_PROVIDER` environment variable to the key you defined for your new provider.
+
+- **Pinecone Specific Configuration (if `VECTOR_STORE_PROVIDER="pinecone"`)**:
+    - **`PINECONE_API_KEY`**: Your Pinecone API key.
+    - **`PINECONE_INDEX_NAME`**: The name of your pre-existing Pinecone index. The dimension of this index should match the embedding dimension used by the application (currently 10, as per `vectorService.generateEmbedding`). Each project's assets will be stored in a namespace within this index, named after the `projectId`.
+
+- **Weaviate Specific Configuration (if `VECTOR_STORE_PROVIDER="weaviate"`)**:
+    - **`WEAVIATE_SCHEME`**: The scheme for your Weaviate instance (e.g., `http` or `https`). Default: `http`.
+    - **`WEAVIATE_HOST`**: The host and port of your Weaviate instance (e.g., `localhost:8080` or `your-cluster.weaviate.network`). Default: `localhost:8080`.
+    - **`WEAVIATE_API_KEY`**: Your Weaviate API key, if authentication is enabled (e.g., for Weaviate Cloud Service). Default: `''`.
+    - **`WEAVIATE_CLASS_NAME_PREFIX`**: A prefix used for creating Weaviate classes. Each project's assets will be stored in a class named `{WEAVIATE_CLASS_NAME_PREFIX}{SanitizedProjectId}`. The class will be created automatically if it doesn't exist, with `vectorizer: 'none'` to support manual vector input. Default: `ProjectAsset`.
+
+- **ChromaDB Specific Configuration (if `VECTOR_STORE_PROVIDER="chroma"`)**:
+    - **`CHROMA_PATH`**: The URL path to your ChromaDB server (e.g., `http://localhost:8000`). If left empty, ChromaDB will run in-memory (data lost on restart) or use local file persistence if configured by the ChromaDB instance itself. Default: `''`.
+    - **`CHROMA_COLLECTION_NAME_PREFIX`**: A prefix for ChromaDB collection names. Each project's assets will be stored in a collection named `{CHROMA_COLLECTION_NAME_PREFIX}{SanitizedProjectId}`. Collections are created automatically if they don't exist. Default: `project-`.
+
+- **FAISS Specific Configuration (if `VECTOR_STORE_PROVIDER="faiss"`)**:
+    - **`FAISS_INDEX_PATH`**: Directory path where FAISS index files and their corresponding ID mapping files will be stored. Each project will have its own `.index` and `.mapping.json` file in this directory. Default: `./faiss_indices`.
+    - **`FAISS_DEFAULT_DIMENSION`**: The dimension of the vectors to be stored. This must match the output dimension of the embedding model (currently 10). Default: `10`.
+    - *Note*: The `faiss-node` library requires FAISS to be installed on the system. This provider is suitable for local development or environments where you can manage this dependency. Performance with frequent additions/removals might degrade over time without periodic index rebuilding (not currently implemented).
 
 ### LinkedIn Scopes and Permissions
 The application requires the following OAuth scopes for LinkedIn integration. These are requested during the "Connect LinkedIn" process:

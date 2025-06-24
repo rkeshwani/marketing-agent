@@ -1,8 +1,12 @@
 // src/services/vectorService.js
 const config = require('../config/config');
 const InMemoryVectorStore = require('./inMemoryVectorStore');
+const PineconeVectorStore = require('./pineconeVectorStore');
+const WeaviateVectorStore = require('./weaviateVectorStore');
+const ChromaVectorStore = require('./chromaVectorStore');
+const FaissVectorStore = require('./faissVectorStore');
+const PgvectorStore = require('./pgvectorStore');
 // Future: Import other vector stores like
-// const PineconeVectorStore = require('./pineconeVectorStore');
 // const DatabaseVectorStore = require('./databaseVectorStore');
 
 let vectorStoreInstance;
@@ -21,10 +25,22 @@ function getVectorStore() {
       case 'inmemory':
         vectorStoreInstance = new InMemoryVectorStore();
         break;
+      case 'pinecone':
+        vectorStoreInstance = new PineconeVectorStore();
+        break;
+      case 'weaviate':
+        vectorStoreInstance = new WeaviateVectorStore();
+        break;
+      case 'chroma':
+        vectorStoreInstance = new ChromaVectorStore();
+        break;
+      case 'faiss':
+        vectorStoreInstance = new FaissVectorStore();
+        break;
+      case 'pgvector':
+        vectorStoreInstance = new PgvectorStore();
+        break;
       // Example for future providers:
-      // case 'pinecone':
-      //   vectorStoreInstance = new PineconeVectorStore(config.PINECONE_API_KEY, config.PINECONE_ENVIRONMENT);
-      //   break;
       // case 'database':
       //   vectorStoreInstance = new DatabaseVectorStore(config.DATABASE_CONNECTION_STRING);
       //   break;
