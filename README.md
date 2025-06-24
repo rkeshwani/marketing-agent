@@ -129,6 +129,19 @@ The application integrates with the Gemini AI language model service. Ensure the
 - **`GEMINI_API_KEY`**: Your API key for the Gemini AI language model service.
 - **`GEMINI_API_ENDPOINT`**: The API endpoint URL for the Gemini service (e.g., `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent`). Refer to the official Gemini documentation for the correct endpoint for your model.
 
+### Vector Service Configuration
+
+The application uses a vector service for managing and searching asset embeddings. This service is designed to be extendable, allowing different vector store providers to be implemented.
+
+- **`VECTOR_STORE_PROVIDER`**: Specifies the vector store provider to use.
+    - Default: `inMemory`
+    - Currently available options:
+        - `inMemory`: Uses a transient, in-memory vector store. Suitable for development and testing. Data is lost when the application restarts.
+    - To implement a new provider (e.g., Pinecone, a database-backed store):
+        1. Create a new class in `src/services/` that implements `src/services/vectorStoreInterface.js`.
+        2. Update `src/services/vectorService.js` to include your new provider in the `getVectorStore` factory function.
+        3. Set the `VECTOR_STORE_PROVIDER` environment variable to the key you defined for your new provider.
+
 ### LinkedIn Scopes and Permissions
 The application requires the following OAuth scopes for LinkedIn integration. These are requested during the "Connect LinkedIn" process:
 - **`r_liteprofile`**: Used to retrieve your basic profile information, such as your name and LinkedIn ID. This helps in personalizing the connection within the app.

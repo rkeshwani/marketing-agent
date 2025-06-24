@@ -37,6 +37,9 @@ const config = {
   LINKEDIN_APP_ID: process.env.LINKEDIN_APP_ID || '',
   LINKEDIN_APP_SECRET: process.env.LINKEDIN_APP_SECRET || '',
 
+  // Vector Store Configuration
+  VECTOR_STORE_PROVIDER: process.env.VECTOR_STORE_PROVIDER || 'inMemory', // 'inMemory', 'pinecone', 'database', etc.
+
   // Add other configurations as needed
 };
 
