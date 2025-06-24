@@ -165,6 +165,26 @@ The application uses a vector service for managing and searching asset embedding
     - **`FAISS_DEFAULT_DIMENSION`**: The dimension of the vectors to be stored. This must match the output dimension of the embedding model (currently 10). Default: `10`.
     - *Note*: The `faiss-node` library requires FAISS to be installed on the system. This provider is suitable for local development or environments where you can manage this dependency. Performance with frequent additions/removals might degrade over time without periodic index rebuilding (not currently implemented).
 
+### Data Store Configuration
+
+The application uses a data store abstraction to manage project and objective data. This allows different backend data storage solutions to be used.
+
+- **`DATA_PROVIDER`**: Specifies the data store provider to use.
+    - Default: `flatfile`
+    - Available options:
+        - `flatfile`: Uses a local JSON file (`data.json`) for storage. Simple, no external dependencies, but not suitable for production scale.
+        - `mongodb`: Uses [MongoDB](https://www.mongodb.com/) as the data store. Requires a running MongoDB instance.
+    - To implement a new provider:
+        1. Create a new class in `src/providers/` that implements `src/interfaces/DataStoreInterface.js`.
+        2. Update `src/dataStore.js` to include your new provider in the selection logic based on `DATA_PROVIDER`.
+        3. Set the `DATA_PROVIDER` environment variable to the key you defined for your new provider.
+
+- **MongoDB Specific Configuration (if `DATA_PROVIDER="mongodb"`)**:
+    - **`MONGODB_URI`**: The MongoDB connection string URI (e.g., `mongodb://localhost:27017` or a MongoDB Atlas URI).
+        - Default: `mongodb://localhost:27017`
+    - **`MONGODB_DB_NAME`**: The name of the database to use within your MongoDB instance.
+        - Default: `agentic_chat_js_db`
+
 ### LinkedIn Scopes and Permissions
 The application requires the following OAuth scopes for LinkedIn integration. These are requested during the "Connect LinkedIn" process:
 - **`r_liteprofile`**: Used to retrieve your basic profile information, such as your name and LinkedIn ID. This helps in personalizing the connection within the app.

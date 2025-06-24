@@ -17,6 +17,7 @@
     "faiss-node": "^0.5.1",
     "googleapis": "^149.0.0",
     "microsandbox": "^0.1.0",
+    "mongodb": "^6.5.0",
     "multer": "^2.0.0",
     "node-fetch": "^2.7.0",
     "pg": "^8.16.2",

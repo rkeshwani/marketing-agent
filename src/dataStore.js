@@ -1,26 +1,44 @@
 // src/dataStore.js
-const FlatFileStore = require('./providers/FlatFileStore');
 const path = require('path');
+const FlatFileStore = require('./providers/FlatFileStore');
+const MongoDbStore = require('./providers/MongoDbStore'); // Added MongoDB provider
 
-// Determine the path to data.json relative to the src directory
-// __dirname is src, so ../data.json
+// --- Configuration ---
+const DATA_PROVIDER = process.env.DATA_PROVIDER || 'flatfile'; // Default to flatfile
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017';
+const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || 'agentic_chat_js_db';
 const DATA_FILE_PATH = path.join(__dirname, '..', 'data.json');
 
-// Instantiate the provider
-// For now, we are hardcoding FlatFileStore.
-// In the future, this could be determined by a config.
-const store = new FlatFileStore(DATA_FILE_PATH);
+let store;
 
-// Initialize and load data
-// This is an async operation, but for module initialization,
-// we'll call it and let it run. Subsequent calls will operate on loaded data.
-// For a server environment, you might want to ensure this completes before accepting requests.
-store.loadData().catch(error => {
-    console.error("Failed to initialize data store:", error);
-    // Depending on the application, you might want to exit or enter a degraded state.
+// --- Instantiate Provider based on Configuration ---
+if (DATA_PROVIDER.toLowerCase() === 'mongodb') {
+    console.log(`Initializing MongoDB data store with URI: ${MONGODB_URI} and DB: ${MONGODB_DB_NAME}`);
+    store = new MongoDbStore(MONGODB_URI, MONGODB_DB_NAME);
+} else if (DATA_PROVIDER.toLowerCase() === 'flatfile') {
+    console.log(`Initializing FlatFileStore with path: ${DATA_FILE_PATH}`);
+    store = new FlatFileStore(DATA_FILE_PATH);
+} else {
+    console.error(`Invalid DATA_PROVIDER specified: ${DATA_PROVIDER}. Defaulting to FlatFileStore.`);
+    store = new FlatFileStore(DATA_FILE_PATH);
+}
+
+// --- Initialize and Load Data ---
+// This is an async operation. For a server environment, ensure this completes
+// or is properly handled before the application starts serving requests that depend on it.
+// For MongoDbStore, connect() is called within loadData().
+store.loadData().then(() => {
+    console.log(`Data store initialized and loaded successfully using ${DATA_PROVIDER} provider.`);
+}).catch(error => {
+    console.error(`Failed to initialize data store with ${DATA_PROVIDER} provider:`, error);
+    // Application might need to handle this critical failure (e.g., exit or run in a degraded mode)
+    // For now, if it's Mongo and it fails, subsequent operations will likely also fail.
+    // If it's FlatFileStore, it might create an empty file, which could be acceptable.
 });
 
+
 // --- Delegated Functions ---
+// All functions remain async as they interact with an async store.
 // All functions now become async as they interact with an async store.
 
 async function addProject(projectData) {
