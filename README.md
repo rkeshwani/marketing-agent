@@ -165,6 +165,60 @@ The application uses a vector service for managing and searching asset embedding
     - **`FAISS_DEFAULT_DIMENSION`**: The dimension of the vectors to be stored. This must match the output dimension of the embedding model (currently 10). Default: `10`.
     - *Note*: The `faiss-node` library requires FAISS to be installed on the system. This provider is suitable for local development or environments where you can manage this dependency. Performance with frequent additions/removals might degrade over time without periodic index rebuilding (not currently implemented).
 
+### Data Store Configuration
+
+The application uses a data store abstraction to manage project and objective data. This allows different backend data storage solutions to be used.
+
+- **`DATA_PROVIDER`**: Specifies the data store provider to use.
+    - Default: `flatfile`
+    - Available options:
+        - `flatfile`: Uses a local JSON file (`data.json`) for storage. Simple, no external dependencies, but not suitable for production scale.
+        - `mongodb`: Uses [MongoDB](https://www.mongodb.com/) as the data store. Requires a running MongoDB instance.
+        - `firestore`: Uses [Google Cloud Firestore](https://cloud.google.com/firestore) as the data store. Requires a Google Cloud Platform project and appropriate authentication.
+        - `dynamodb`: Uses [Amazon DynamoDB](https://aws.amazon.com/dynamodb/) as the data store. Requires an AWS account, configured tables, and appropriate IAM permissions.
+        - `cosmosdb`: Uses [Azure Cosmos DB](https://azure.microsoft.com/en-us/services/cosmos-db/) (SQL API) as the data store. Requires an Azure account and a configured Cosmos DB instance.
+    - To implement a new provider:
+        1. Create a new class in `src/providers/` that implements `src/interfaces/DataStoreInterface.js`.
+        2. Update `src/dataStore.js` to include your new provider in the selection logic based on `DATA_PROVIDER`.
+        3. Set the `DATA_PROVIDER` environment variable to the key you defined for your new provider.
+
+- **MongoDB Specific Configuration (if `DATA_PROVIDER="mongodb"`)**:
+    - **`MONGODB_URI`**: The MongoDB connection string URI (e.g., `mongodb://localhost:27017` or a MongoDB Atlas URI).
+        - Default: `mongodb://localhost:27017`
+    - **`MONGODB_DB_NAME`**: The name of the database to use within your MongoDB instance.
+        - Default: `agentic_chat_js_db`
+
+- **Firestore Specific Configuration (if `DATA_PROVIDER="firestore"`)**:
+    - **`GCLOUD_PROJECT_ID`**: Your Google Cloud Project ID where Firestore is enabled.
+        - If not set, the Firestore client library might try to infer it from the environment (e.g., when running on GCP services).
+    - **`GOOGLE_APPLICATION_CREDENTIALS`**: Path to your Google Cloud service account key file (JSON).
+        - This is the recommended way for authentication when running outside of Google Cloud environments.
+        - If not set, the client library will attempt to use Application Default Credentials (ADC), which are automatically available in many Google Cloud environments (e.g., Cloud Run, Cloud Functions, GCE).
+        - For local development, you can set this after authenticating via `gcloud auth application-default login`.
+
+- **Amazon DynamoDB Specific Configuration (if `DATA_PROVIDER="dynamodb"`)**:
+    - **`AWS_REGION`**: The AWS region where your DynamoDB tables are located (e.g., `us-east-1`, `eu-west-2`).
+        - This is a standard AWS SDK environment variable. If not set, the SDK might try to infer it from shared AWS config or an EC2 instance profile. It's best to set it explicitly.
+    - **`DYNAMODB_PROJECTS_TABLE`**: The name of your DynamoDB table for storing projects.
+        - Default: `agentic-chat-projects`
+        - This table should have a primary key `id` (String).
+    - **`DYNAMODB_OBJECTIVES_TABLE`**: The name of your DynamoDB table for storing objectives.
+        - Default: `agentic-chat-objectives`
+        - This table should have a primary key `id` (String).
+        - **Important**: For efficient querying of objectives by `projectId`, a Global Secondary Index (GSI) is recommended on this table. The `DynamoDbStore.js` provider will attempt to use a GSI named `ObjectivesByProjectIdIndex` with `projectId` as its partition key. If this GSI doesn't exist, it will fall back to a less efficient Scan operation.
+    - **AWS Credentials**: Ensure your environment is configured with AWS credentials (e.g., via `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` environment variables, or an IAM role if running on AWS infrastructure). The application needs permissions to read, write, and query the specified DynamoDB tables.
+
+- **Azure Cosmos DB Specific Configuration (if `DATA_PROVIDER="cosmosdb"`)**:
+    - **`COSMOS_ENDPOINT`**: The URI endpoint of your Azure Cosmos DB account (e.g., `https://your-account.documents.azure.com:443/`). **Required.**
+    - **`COSMOS_KEY`**: The primary or secondary key for your Cosmos DB account. **Required.**
+    - **`COSMOS_DATABASE_ID`**: The ID of the database to use within your Cosmos DB account.
+        - Default: `agenticChatDB` (will be created by the provider if it doesn't exist).
+    - **`COSMOS_PROJECTS_CONTAINER_ID`**: The ID of the container for storing projects.
+        - Default: `Projects` (will be created with partition key `/id` by the provider if it doesn't exist).
+    - **`COSMOS_OBJECTIVES_CONTAINER_ID`**: The ID of the container for storing objectives.
+        - Default: `Objectives` (will be created with partition key `/projectId` by the provider if it doesn't exist).
+    - **Note on Partition Keys**: The `CosmosDbStore.js` provider is implemented with `/id` as the partition key for projects and `/projectId` for objectives. Understanding partition key implications for performance and cost in Cosmos DB is crucial for production deployments. Operations that need to find an objective by its `id` without knowing its `projectId` will perform a cross-partition query, which is less efficient.
+
 ### LinkedIn Scopes and Permissions
 The application requires the following OAuth scopes for LinkedIn integration. These are requested during the "Connect LinkedIn" process:
 - **`r_liteprofile`**: Used to retrieve your basic profile information, such as your name and LinkedIn ID. This helps in personalizing the connection within the app.

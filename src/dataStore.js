@@ -1,318 +1,150 @@
 // src/dataStore.js
-const fs = require('fs');
 const path = require('path');
-const Project = require('./models/Project');
-const Objective = require('./models/Objective');
+const FlatFileStore = require('./providers/FlatFileStore');
+const MongoDbStore = require('./providers/MongoDbStore');
+const FirestoreStore = require('./providers/FirestoreStore');
+const DynamoDbStore = require('./providers/DynamoDbStore');
+const CosmosDbStore = require('./providers/CosmosDbStore'); // Added CosmosDB provider
 
+// --- Configuration ---
+const DATA_PROVIDER = process.env.DATA_PROVIDER || 'flatfile'; // Default to flatfile
+
+// MongoDB Config
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017';
+const MONGODB_DB_NAME = process.env.MONGODB_DB_NAME || 'agentic_chat_js_db';
+
+// FlatFile Config
 const DATA_FILE_PATH = path.join(__dirname, '..', 'data.json');
 
-let projects = [];
-let objectives = [];
+// Firestore Config
+const GCLOUD_PROJECT_ID = process.env.GCLOUD_PROJECT_ID;
+const GOOGLE_APPLICATION_CREDENTIALS = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
-// Function to load data from JSON file
-function loadDataFromFile() {
-  try {
-    if (fs.existsSync(DATA_FILE_PATH)) {
-      const jsonData = fs.readFileSync(DATA_FILE_PATH, 'utf8');
-      const data = JSON.parse(jsonData);
+// DynamoDB Config
+const AWS_REGION = process.env.AWS_REGION; // e.g., 'us-east-1'
+const DYNAMODB_PROJECTS_TABLE = process.env.DYNAMODB_PROJECTS_TABLE || 'agentic-chat-projects';
+const DYNAMODB_OBJECTIVES_TABLE = process.env.DYNAMODB_OBJECTIVES_TABLE || 'agentic-chat-objectives';
 
-      const loadedProjects = (data.projects || []).map(p => {
-        const project = new Project(p.name, p.description);
-        // Assign all other properties from the loaded object to the instance
-        // This ensures properties like id, createdAt, updatedAt, and any custom fields are restored.
-        for (const key in p) {
-          if (key !== 'name' && key !== 'description') { // Constructor handles these
-            project[key] = p[key];
-          }
+// Cosmos DB Config
+const COSMOS_ENDPOINT = process.env.COSMOS_ENDPOINT; // e.g., https://your-account.documents.azure.com:443/
+const COSMOS_KEY = process.env.COSMOS_KEY; // Primary key
+const COSMOS_DATABASE_ID = process.env.COSMOS_DATABASE_ID || 'agenticChatDB';
+const COSMOS_PROJECTS_CONTAINER_ID = process.env.COSMOS_PROJECTS_CONTAINER_ID || 'Projects';
+const COSMOS_OBJECTIVES_CONTAINER_ID = process.env.COSMOS_OBJECTIVES_CONTAINER_ID || 'Objectives';
+
+let store;
+
+// --- Instantiate Provider based on Configuration ---
+switch (DATA_PROVIDER.toLowerCase()) {
+    case 'mongodb':
+        console.log(`Initializing MongoDB data store with URI: ${MONGODB_URI} and DB: ${MONGODB_DB_NAME}`);
+        store = new MongoDbStore(MONGODB_URI, MONGODB_DB_NAME);
+        break;
+    case 'firestore':
+        if (!GCLOUD_PROJECT_ID && !GOOGLE_APPLICATION_CREDENTIALS) {
+            console.warn('Firestore provider selected, but GCLOUD_PROJECT_ID or GOOGLE_APPLICATION_CREDENTIALS are not set. Client may rely on ADC discovery if running in GCP.');
         }
-        // Ensure dates are Date objects if they are stored as strings
-        if (p.createdAt) project.createdAt = new Date(p.createdAt);
-        if (p.updatedAt) project.updatedAt = new Date(p.updatedAt);
-        return project;
-      });
-
-      const loadedObjectives = (data.objectives || []).map(o => {
-        // Corrected constructor arguments: projectId, title, brief
-        const objective = new Objective(o.projectId, o.title, o.brief);
-        // Assign all other properties, ensuring constructor-set ones are not overwritten from plain obj unless intended
-        // and 'plan' is handled separately if it's meant to be fully replaced from JSON.
-        for (const key in o) {
-          if (!['projectId', 'title', 'brief', 'id', 'createdAt', 'updatedAt', 'chatHistory', 'plan'].includes(key)) {
-            objective[key] = o[key];
-          }
+        console.log(`Initializing Firestore data store for project ID: ${GCLOUD_PROJECT_ID || 'default (ADC)'}. KeyFile: ${GOOGLE_APPLICATION_CREDENTIALS || 'ADC'}`);
+        store = new FirestoreStore(GCLOUD_PROJECT_ID, GOOGLE_APPLICATION_CREDENTIALS);
+        break;
+    case 'dynamodb':
+        if (!AWS_REGION) {
+            console.warn('DynamoDB provider selected, but AWS_REGION is not set. SDK might try to infer it or use default, which could lead to issues.');
         }
-        // Restore plan if it exists in the JSON object and if it's more than default
-        if (o.plan) {
-            objective.plan = { ...objective.plan, ...o.plan }; // Merge or overwrite as needed
+        console.log(`Initializing DynamoDB data store in region: ${AWS_REGION || 'default SDK region'}. Tables: ${DYNAMODB_PROJECTS_TABLE}, ${DYNAMODB_OBJECTIVES_TABLE}`);
+        store = new DynamoDbStore(AWS_REGION, DYNAMODB_PROJECTS_TABLE, DYNAMODB_OBJECTIVES_TABLE);
+        break;
+    case 'cosmosdb':
+        if (!COSMOS_ENDPOINT || !COSMOS_KEY) {
+            console.error('CosmosDB provider selected, but COSMOS_ENDPOINT or COSMOS_KEY is not set. Cannot initialize CosmosDbStore.');
+            // Fallback to flatfile or throw error
+            console.warn('Defaulting to FlatFileStore due to missing CosmosDB credentials.');
+            store = new FlatFileStore(DATA_FILE_PATH);
+        } else {
+            console.log(`Initializing CosmosDB data store. Endpoint: ${COSMOS_ENDPOINT ? "provided" : "MISSING!"}, DB: ${COSMOS_DATABASE_ID}`);
+            store = new CosmosDbStore(COSMOS_ENDPOINT, COSMOS_KEY, COSMOS_DATABASE_ID, COSMOS_PROJECTS_CONTAINER_ID, COSMOS_OBJECTIVES_CONTAINER_ID);
         }
-        // id, createdAt, updatedAt are set by constructor or should be directly assigned if overriding constructor
-        if(o.id) objective.id = o.id; // allow JSON to override constructor ID if present
-        if(o.createdAt) objective.createdAt = new Date(o.createdAt); // ensure Date object
-        if(o.updatedAt) objective.updatedAt = new Date(o.updatedAt); // ensure Date object
-        // Ensure dates are Date objects
-        if (o.createdAt) objective.createdAt = new Date(o.createdAt);
-        if (o.updatedAt) objective.updatedAt = new Date(o.updatedAt);
-        // Reconstruct chatHistory messages if necessary, assuming they are plain objects
-        if (o.chatHistory) {
-            objective.chatHistory = o.chatHistory.map(message => ({
-                ...message,
-                timestamp: new Date(message.timestamp)
-            }));
+        break;
+    case 'flatfile':
+    default: // Default to FlatFileStore if provider is unknown or 'flatfile'
+        if (DATA_PROVIDER.toLowerCase() !== 'flatfile') {
+            console.warn(`Invalid DATA_PROVIDER specified: ${DATA_PROVIDER}. Defaulting to FlatFileStore.`);
         }
-        return objective;
-      });
-
-      projects = loadedProjects;
-      objectives = loadedObjectives;
-      console.log('Data loaded and instances reconstructed from', DATA_FILE_PATH);
-    } else {
-      console.log('No data file found. Initializing with empty data and creating file.');
-      projects = [];
-      objectives = [];
-      saveDataToFile(); // Create data.json with empty arrays if it doesn't exist
-    }
-  } catch (error) {
-    console.error('Error loading data from file:', error);
-    projects = [];
-    objectives = [];
-  }
+        console.log(`Initializing FlatFileStore with path: ${DATA_FILE_PATH}`);
+        store = new FlatFileStore(DATA_FILE_PATH);
+        break;
 }
 
-// Function to save data to JSON file
-function saveDataToFile() {
-  try {
-    const data = { projects, objectives };
-    fs.writeFileSync(DATA_FILE_PATH, JSON.stringify(data, null, 2), 'utf8');
-    console.log('Data saved to', DATA_FILE_PATH);
-  } catch (error) {
-    console.error('Error saving data to file:', error);
-  }
+// --- Initialize and Load Data ---
+// This is an async operation. For a server environment, ensure this completes
+// or is properly handled before the application starts serving requests that depend on it.
+// For MongoDbStore, connect() is called within loadData().
+store.loadData().then(() => {
+    console.log(`Data store initialized and loaded successfully using ${DATA_PROVIDER} provider.`);
+}).catch(error => {
+    console.error(`Failed to initialize data store with ${DATA_PROVIDER} provider:`, error);
+    // Application might need to handle this critical failure (e.g., exit or run in a degraded mode)
+    // For now, if it's Mongo and it fails, subsequent operations will likely also fail.
+    // If it's FlatFileStore, it might create an empty file, which could be acceptable.
+});
+
+
+// --- Delegated Functions ---
+// All functions remain async as they interact with an async store.
+// All functions now become async as they interact with an async store.
+
+async function addProject(projectData) {
+    return store.addProject(projectData);
 }
 
-// Load data on startup
-loadDataFromFile();
-
-// --- Project Functions ---
-function addProject(projectData) {
-    // Project class is already required at the top
-    const newProject = new Project(projectData.name, projectData.description);
-
-    // Assign new fields if they are provided in projectData
-    newProject.facebookUserAccessToken = projectData.facebookUserAccessToken || null;
-    newProject.facebookUserID = projectData.facebookUserID || null;
-    newProject.facebookSelectedPageID = projectData.facebookSelectedPageID || null;
-    newProject.facebookPageName = projectData.facebookPageName || null; // Added
-    newProject.facebookPageAccessToken = projectData.facebookPageAccessToken || null;
-    newProject.facebookPermissions = projectData.facebookPermissions || [];
-    newProject.tiktokAccessToken = projectData.tiktokAccessToken || null;
-    newProject.tiktokUserID = projectData.tiktokUserID || null;
-    newProject.tiktokPermissions = projectData.tiktokPermissions || [];
-
-    // Assign LinkedIn fields
-    newProject.linkedinAccessToken = projectData.linkedinAccessToken || null;
-    newProject.linkedinUserID = projectData.linkedinUserID || null;
-    newProject.linkedinUserFirstName = projectData.linkedinUserFirstName || null;
-    newProject.linkedinUserLastName = projectData.linkedinUserLastName || null;
-    newProject.linkedinUserEmail = projectData.linkedinUserEmail || null;
-    newProject.linkedinPermissions = projectData.linkedinPermissions || [];
-
-    // Assign Google Drive and asset-related fields
-    newProject.googleDriveFolderId = projectData.googleDriveFolderId || null;
-    newProject.googleDriveAccessToken = projectData.googleDriveAccessToken || null;
-    newProject.googleDriveRefreshToken = projectData.googleDriveRefreshToken || null;
-    newProject.assets = projectData.assets || [];
-
-    // Assign WordPress fields
-    newProject.wordpressUrl = projectData.wordpressUrl || null;
-    newProject.wordpressUsername = projectData.wordpressUsername || null;
-    newProject.wordpressApplicationPassword = projectData.wordpressApplicationPassword || null;
-
-    projects.push(newProject);
-    console.log(`[dataStore.addProject] Added project "${newProject.name}" with id "${newProject.id}". Current project count: ${projects.length}. Project IDs: ${JSON.stringify(projects.map(p=>p.id))}`);
-    saveDataToFile(); // Save after adding a new project
-    return newProject;
+async function getAllProjects() {
+    return store.getAllProjects();
 }
 
-function getAllProjects() {
-    return [...projects];
+async function findProjectById(projectId) {
+    return store.findProjectById(projectId);
 }
 
-function findProjectById(projectId) {
-    console.log(`[dataStore.findProjectById] Searching for projectId: "${projectId}"`);
-    if (!Array.isArray(projects)) {
-        console.error('[dataStore.findProjectById] CRITICAL: projects variable is not an array! Value:', projects);
-        return null; // Prevent TypeError from .find()
-    }
-    const project = projects.find(p => p.id === projectId);
-    if (project) {
-        console.log(`[dataStore.findProjectById] Found project with id: "${projectId}"`);
-    } else {
-        console.log(`[dataStore.findProjectById] Project NOT FOUND with id: "${projectId}". Current project IDs in store: ${JSON.stringify(projects.map(p=>p.id))}`);
-    }
-    return project;
+async function updateProjectById(projectId, updateData) {
+    return store.updateProjectById(projectId, updateData);
 }
 
-function updateProjectById(projectId, updateData) {
-    const project = findProjectById(projectId);
-    if (project) {
-        project.name = updateData.name !== undefined ? updateData.name : project.name;
-        project.description = updateData.description !== undefined ? updateData.description : project.description;
-
-        // Update Facebook fields if provided
-        if (updateData.facebookUserAccessToken !== undefined) project.facebookUserAccessToken = updateData.facebookUserAccessToken;
-        if (updateData.facebookUserID !== undefined) project.facebookUserID = updateData.facebookUserID;
-        if (updateData.facebookSelectedPageID !== undefined) project.facebookSelectedPageID = updateData.facebookSelectedPageID;
-        if (updateData.facebookPageName !== undefined) project.facebookPageName = updateData.facebookPageName; // Added
-        if (updateData.facebookPageAccessToken !== undefined) project.facebookPageAccessToken = updateData.facebookPageAccessToken;
-        if (updateData.facebookPermissions !== undefined) project.facebookPermissions = updateData.facebookPermissions;
-
-        // Update TikTok fields if provided
-        if (updateData.tiktokAccessToken !== undefined) project.tiktokAccessToken = updateData.tiktokAccessToken;
-        if (updateData.tiktokUserID !== undefined) project.tiktokUserID = updateData.tiktokUserID;
-        if (updateData.tiktokPermissions !== undefined) project.tiktokPermissions = updateData.tiktokPermissions;
-
-        // Update LinkedIn fields if provided
-        if (updateData.linkedinAccessToken !== undefined) project.linkedinAccessToken = updateData.linkedinAccessToken;
-        if (updateData.linkedinUserID !== undefined) project.linkedinUserID = updateData.linkedinUserID;
-        if (updateData.linkedinUserFirstName !== undefined) project.linkedinUserFirstName = updateData.linkedinUserFirstName;
-        if (updateData.linkedinUserLastName !== undefined) project.linkedinUserLastName = updateData.linkedinUserLastName;
-        if (updateData.linkedinUserEmail !== undefined) project.linkedinUserEmail = updateData.linkedinUserEmail;
-        if (updateData.linkedinPermissions !== undefined) project.linkedinPermissions = updateData.linkedinPermissions;
-
-        // Update Google Drive and asset-related fields if provided
-        if (updateData.googleDriveFolderId !== undefined) project.googleDriveFolderId = updateData.googleDriveFolderId;
-        if (updateData.googleDriveAccessToken !== undefined) project.googleDriveAccessToken = updateData.googleDriveAccessToken;
-        if (updateData.googleDriveRefreshToken !== undefined) project.googleDriveRefreshToken = updateData.googleDriveRefreshToken;
-        if (updateData.assets !== undefined) project.assets = updateData.assets;
-
-        // Update WordPress fields if provided
-        if (updateData.wordpressUrl !== undefined) project.wordpressUrl = updateData.wordpressUrl;
-        if (updateData.wordpressUsername !== undefined) project.wordpressUsername = updateData.wordpressUsername;
-        if (updateData.wordpressApplicationPassword !== undefined) project.wordpressApplicationPassword = updateData.wordpressApplicationPassword;
-
-        project.updatedAt = new Date();
-        saveDataToFile(); // Save after updating a project
-        return project;
-    }
-    return null;
+async function deleteProjectById(projectId) {
+    return store.deleteProjectById(projectId);
 }
 
-function deleteProjectById(projectId) {
-    const index = projects.findIndex(p => p.id === projectId);
-    if (index !== -1) {
-        projects.splice(index, 1);
-        // Also delete associated objectives
-        // Note: deleteObjectiveById will call saveDataToFile, so multiple saves will occur.
-        // This is acceptable for now, but could be optimized later if performance becomes an issue.
-        const projectObjectives = objectives.filter(o => o.projectId === projectId);
-        projectObjectives.forEach(o => deleteObjectiveById(o.id)); // This will trigger saves
-        saveDataToFile(); // Save after deleting a project (and its objectives)
-        return true;
-    }
-    return false;
+async function addObjective(objectiveData, projectId) {
+    return store.addObjective(objectiveData, projectId);
 }
 
-// --- Objective Functions ---
-function addObjective(objectiveData, projectId) {
-    console.log(`[dataStore.addObjective] Attempting to add objective for projectId: "${projectId}"`);
-    // Objective class is already required at the top
-    const project = findProjectById(projectId); // This will now log details from findProjectById
-    if (!project) {
-        // Error already logged by findProjectById if not found, but can add context here if needed
-        console.error(`[dataStore.addObjective] Prerequisite project check failed for projectId: "${projectId}". Objective not added.`);
-        return null; // Or throw an error
-    }
-    // Corrected constructor arguments: projectId, title, brief
-    // Ensure title and brief are strings
-    const title = String(objectiveData.title || '');
-    const brief = String(objectiveData.brief || '');
-    const newObjective = new Objective(projectId, title, brief);
-
-    // Validation check for the newObjective instance
-    if (typeof newObjective !== 'object' || newObjective === null || !newObjective.hasOwnProperty('id') || !newObjective.hasOwnProperty('title')) {
-        console.error('CRITICAL: newObjective is not a valid Objective instance right after construction!');
-        console.error('Objective Data:', JSON.stringify(objectiveData));
-        console.error('Constructed newObjective:', JSON.stringify(newObjective));
-        return null; // Or throw new Error('Failed to create valid Objective instance');
-    }
-
-    // If plan structure is provided in objectiveData and needs to overwrite/extend default
-    if (objectiveData.plan) {
-        newObjective.plan = { ...newObjective.plan, ...objectiveData.plan };
-    }
-    // Note: id, createdAt, updatedAt are handled by the Objective constructor.
-    // Any other specific properties from objectiveData should be assigned here if not covered by constructor.
-
-    objectives.push(newObjective);
-    saveDataToFile(); // Save after adding a new objective
-    return newObjective;
+async function getObjectivesByProjectId(projectId) {
+    return store.getObjectivesByProjectId(projectId);
 }
 
-function getObjectivesByProjectId(projectId) {
-    return objectives.filter(o => o.projectId === projectId);
+async function getAllObjectives() {
+    return store.getAllObjectives();
 }
 
-function getAllObjectives() {
-    console.log('[dataStore.getAllObjectives] Returning all objectives.');
-    return [...objectives]; // Return a shallow copy of the objectives array
+async function findObjectiveById(objectiveId) {
+    return store.findObjectiveById(objectiveId);
 }
 
-function findObjectiveById(objectiveId) {
-    return objectives.find(o => o.id === objectiveId);
+async function updateObjectiveById(objectiveId, objectiveData) {
+    return store.updateObjectiveById(objectiveId, objectiveData);
 }
 
-function updateObjectiveById(objectiveId, objectiveData) {
-    const objectiveToUpdate = findObjectiveById(objectiveId);
-    if (objectiveToUpdate) {
-        // Update only the fields present in objectiveData
-        for (const key in objectiveData) {
-            if (objectiveData.hasOwnProperty(key)) {
-                // Do not update 'id' and 'projectId' if they are part of objectiveData,
-                // as these are typically immutable or managed elsewhere.
-                if (key !== 'id' && key !== 'projectId') {
-                    objectiveToUpdate[key] = objectiveData[key];
-                }
-            }
-        }
-        objectiveToUpdate.updatedAt = new Date();
-        saveDataToFile(); // Save after updating an objective
-        return objectiveToUpdate;
-    }
-    return null;
+async function deleteObjectiveById(objectiveId) {
+    return store.deleteObjectiveById(objectiveId);
 }
 
-function deleteObjectiveById(objectiveId) {
-    const index = objectives.findIndex(o => o.id === objectiveId);
-    if (index !== -1) {
-        objectives.splice(index, 1);
-        saveDataToFile(); // Save after deleting an objective
-        return true;
-    }
-    return false;
+async function addMessageToObjectiveChat(objectiveId, sender, text) {
+    return store.addMessageToObjectiveChat(objectiveId, sender, text);
 }
 
-// Function to add a message to an objective's chat history
-// Note: Chat history saving is complex with current setup.
-// We might need to call saveDataToFile() after this if chat history is critical to persist.
-function addMessageToObjectiveChat(objectiveId, sender, text) {
-    const objective = findObjectiveById(objectiveId);
-    if (objective) {
-        const message = {
-            // In app.js, clientChatHistory uses { role: 'user', content: messageText }
-            // Let's try to be consistent or adapt later as needed.
-            // For now, using the structure from the original ChatHistory.js
-            speaker: sender, // 'user' or 'agent'
-            content: text, // message content
-            timestamp: new Date()
-        };
-        objective.chatHistory.push(message);
-        objective.updatedAt = new Date();
-        saveDataToFile(); // Save after adding a message to chat history
-        return message;
-    }
-    return null;
+// Expose a way to save data if needed externally, though FlatFileStore handles its own saves.
+async function saveData() {
+    return store.saveData();
 }
-
 
 module.exports = {
     addProject,
@@ -322,10 +154,10 @@ module.exports = {
     deleteProjectById,
     addObjective,
     getObjectivesByProjectId,
-    getAllObjectives, // Added getAllObjectives
+    getAllObjectives,
     findObjectiveById,
     updateObjectiveById,
     deleteObjectiveById,
     addMessageToObjectiveChat,
-    saveDataToFile // Exporting for potential external use, though primarily internal
+    saveData // Exporting the saveData method from the store instance
 };

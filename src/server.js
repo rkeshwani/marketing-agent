@@ -161,7 +161,7 @@ app.get('/auth/linkedin/callback', async (req, res) => {
 });
 
 // --- LinkedIn Project Finalization API ---
-app.post('/api/linkedin/finalize-project', (req, res) => {
+app.post('/api/linkedin/finalize-project', async (req, res) => { // Added async
     const { state, projectName, projectDescription } = req.body;
 
     if (!projectName) {
@@ -197,7 +197,7 @@ app.post('/api/linkedin/finalize-project', (req, res) => {
             linkedinPermissions: permissionsArray, // Use the scopes defined at the top
         };
 
-        const newProject = dataStore.addProject(projectData);
+        const newProject = await dataStore.addProject(projectData); // Added await
         delete req.session[state]; // Clean up session
         res.status(201).json(newProject);
 
@@ -300,7 +300,7 @@ app.get('/auth/facebook/callback', async (req, res) => {
 app.post('/api/projects/:projectId/context-questions', async (req, res) => {
     const { projectId } = req.params;
     try {
-        const project = dataStore.findProjectById(projectId);
+        const project = await dataStore.findProjectById(projectId); // Added await
         if (!project) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -310,7 +310,7 @@ app.post('/api/projects/:projectId/context-questions', async (req, res) => {
         // Ensure project.projectContextQuestions is initialized if it's not already
         project.projectContextQuestions = questions;
 
-        const updatedProjectResult = dataStore.updateProjectById(projectId, { projectContextQuestions: questions });
+        const updatedProjectResult = await dataStore.updateProjectById(projectId, { projectContextQuestions: questions }); // Added await
         if (!updatedProjectResult) {
              // This case should ideally not happen if findProjectById succeeded
             console.error(`Failed to update project ${projectId} with context questions.`);
@@ -335,7 +335,7 @@ app.post('/api/projects/:projectId/context-answers', async (req, res) => {
     }
 
     try {
-        const project = dataStore.findProjectById(projectId);
+        const project = await dataStore.findProjectById(projectId); // Added await
         if (!project) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -345,7 +345,7 @@ app.post('/api/projects/:projectId/context-answers', async (req, res) => {
         // Ensure project.projectContextAnswers is initialized
         project.projectContextAnswers = structuredAnswers;
 
-        const updatedProjectResult = dataStore.updateProjectById(projectId, { projectContextAnswers: structuredAnswers });
+        const updatedProjectResult = await dataStore.updateProjectById(projectId, { projectContextAnswers: structuredAnswers }); // Added await
          if (!updatedProjectResult) {
             // This case should ideally not happen if findProjectById succeeded
             console.error(`Failed to update project ${projectId} with structured context answers.`);
@@ -365,7 +365,7 @@ app.delete('/api/projects/:projectId/assets/:assetId', async (req, res) => {
     const { projectId, assetId } = req.params;
 
     try {
-        const project = dataStore.findProjectById(projectId);
+        const project = await dataStore.findProjectById(projectId); // Added await
         if (!project) {
             return res.status(404).json({ error: 'Project not found.' });
         }
@@ -413,7 +413,7 @@ app.delete('/api/projects/:projectId/assets/:assetId', async (req, res) => {
 
         // Remove from Project Assets Array in DataStore
         const updatedAssets = project.assets.filter(a => a.assetId !== assetId);
-        dataStore.updateProjectById(projectId, { assets: updatedAssets });
+        await dataStore.updateProjectById(projectId, { assets: updatedAssets }); // Added await
 
         res.status(200).json({ message: 'Asset deleted successfully.' });
 
@@ -424,10 +424,10 @@ app.delete('/api/projects/:projectId/assets/:assetId', async (req, res) => {
 });
 
 // POST /api/objectives/:objectiveId/plan/approve - Approve the plan for an objective
-app.post('/api/objectives/:objectiveId/plan/approve', (req, res) => {
+app.post('/api/objectives/:objectiveId/plan/approve', async (req, res) => { // Added async
     const { objectiveId } = req.params;
     try {
-        const objective = dataStore.findObjectiveById(objectiveId);
+        const objective = await dataStore.findObjectiveById(objectiveId); // Added await
 
         if (!objective) {
             return res.status(404).json({ error: 'Objective not found to approve plan for' });
@@ -442,7 +442,8 @@ app.post('/api/objectives/:objectiveId/plan/approve', (req, res) => {
         objective.updatedAt = new Date(); // Also update the objective's updatedAt timestamp
 
         // dataStore.updateObjectiveById was already modified to handle plan updates
-        const updatedObjective = dataStore.updateObjectiveById(objective.id, objective.title, objective.brief, objective.plan);
+        // The updateObjectiveById now takes (objectiveId, updateData)
+        const updatedObjective = await dataStore.updateObjectiveById(objective.id, { plan: objective.plan, updatedAt: objective.updatedAt }); // Added await and changed params
 
         if (!updatedObjective) {
             // This might happen if findObjectiveById found it, but updateObjectiveById failed internally
@@ -476,7 +477,7 @@ app.post('/api/objectives/:objectiveId/initialize-agent', async (req, res) => {
 });
 
 // --- TikTok Project Finalization API ---
-app.post('/api/tiktok/finalize-project', (req, res) => {
+app.post('/api/tiktok/finalize-project', async (req, res) => { // Added async
     const { state, projectName, projectDescription } = req.body;
 
     if (!projectName) { // Specific check for projectName
@@ -511,7 +512,7 @@ app.post('/api/tiktok/finalize-project', (req, res) => {
             tiktokPermissions: permissionsArray,
         };
 
-        const newProject = dataStore.addProject(projectData);
+        const newProject = await dataStore.addProject(projectData); // Added await
         delete req.session[state];
         res.status(201).json(newProject);
 
@@ -660,7 +661,7 @@ app.get('/auth/google/callback', async (req, res) => {
         oauth2Client.setCredentials(tokens);
 
         // 2. Get Project Details
-        const project = dataStore.findProjectById(projectId);
+        const project = await dataStore.findProjectById(projectId); // Added await
         if (!project) {
             console.error(`Google Auth Callback: Project not found with ID: ${projectId}`);
             delete req.session.gDriveProjectId;
@@ -723,7 +724,7 @@ app.get('/auth/google/callback', async (req, res) => {
         if (tokens.refresh_token) {
             updateData.googleDriveRefreshToken = tokens.refresh_token;
         }
-        const updatedProject = dataStore.updateProjectById(projectId, updateData);
+        const updatedProject = await dataStore.updateProjectById(projectId, updateData); // Added await
 
         if (!updatedProject) {
             // This is unlikely if findProjectById succeeded, but good to check
@@ -767,7 +768,7 @@ app.get('/api/facebook/pages', (req, res) => {
 });
 
 // POST /api/facebook/finalize-project - Create/update project with Facebook details
-app.post('/api/facebook/finalize-project', (req, res) => {
+app.post('/api/facebook/finalize-project', async (req, res) => { // Added async
     const { state, selectedPageID, projectName, projectDescription } = req.body;
 
     if (!projectName) { // Specific check for projectName
@@ -805,7 +806,7 @@ app.post('/api/facebook/finalize-project', (req, res) => {
             facebookPermissions: selectedPage.perms || []
         };
 
-        const newProject = dataStore.addProject(projectData);
+        const newProject = await dataStore.addProject(projectData); // Added await
         delete req.session[state];
         res.status(201).json(newProject);
 
@@ -819,7 +820,7 @@ app.post('/api/facebook/finalize-project', (req, res) => {
 // === PROJECT API ENDPOINTS ===
 
 // POST /api/projects - Create a new project
-app.post('/api/projects', (req, res) => {
+app.post('/api/projects', async (req, res) => { // Added async
     const { name, description } = req.body;
     if (!name) {
         return res.status(400).json({ error: 'Project name is required.' });
@@ -830,7 +831,7 @@ app.post('/api/projects', (req, res) => {
         // social media fields to their defaults (null or []) if they are not provided,
         // which is the case here.
         const projectData = { name, description };
-        const newProject = dataStore.addProject(projectData);
+        const newProject = await dataStore.addProject(projectData); // Added await
         res.status(201).json(newProject);
     } catch (error) {
         console.error('Error creating project via POST /api/projects:', error.message, error.stack);
@@ -839,9 +840,9 @@ app.post('/api/projects', (req, res) => {
 });
 
 // GET /api/projects - Get all projects
-app.get('/api/projects', (req, res) => {
+app.get('/api/projects', async (req, res) => { // Added async
     try {
-        const projects = dataStore.getAllProjects();
+        const projects = await dataStore.getAllProjects(); // Added await
         res.status(200).json(projects);
     } catch (error) {
         console.error('Error getting projects:', error.message, error.stack);
@@ -850,10 +851,10 @@ app.get('/api/projects', (req, res) => {
 });
 
 // GET /api/projects/:projectId - Get a specific project
-app.get('/api/projects/:projectId', (req, res) => {
+app.get('/api/projects/:projectId', async (req, res) => { // Added async
     const { projectId } = req.params;
     try {
-        const project = dataStore.findProjectById(projectId);
+        const project = await dataStore.findProjectById(projectId); // Added await
         if (!project) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -865,7 +866,7 @@ app.get('/api/projects/:projectId', (req, res) => {
 });
 
 // PUT /api/projects/:projectId - Update a project
-app.put('/api/projects/:projectId', (req, res) => {
+app.put('/api/projects/:projectId', async (req, res) => { // Added async
     const { projectId } = req.params;
     const { name, description } = req.body;
 
@@ -874,7 +875,7 @@ app.put('/api/projects/:projectId', (req, res) => {
     }
 
     try {
-        const updatedProject = dataStore.updateProjectById(projectId, { name, description });
+        const updatedProject = await dataStore.updateProjectById(projectId, { name, description }); // Added await
         if (!updatedProject) {
             return res.status(404).json({ error: 'Project not found for update' });
         }
@@ -886,10 +887,10 @@ app.put('/api/projects/:projectId', (req, res) => {
 });
 
 // DELETE /api/projects/:projectId - Delete a project
-app.delete('/api/projects/:projectId', (req, res) => {
+app.delete('/api/projects/:projectId', async (req, res) => { // Added async
     const { projectId } = req.params;
     try {
-        const success = dataStore.deleteProjectById(projectId);
+        const success = await dataStore.deleteProjectById(projectId); // Added await
         if (!success) {
             return res.status(404).json({ error: 'Project not found for deletion' });
         }
@@ -903,10 +904,10 @@ app.delete('/api/projects/:projectId', (req, res) => {
 // --- Project Assets API Endpoints ---
 
 // GET /api/projects/:projectId/assets - List all assets for a project
-app.get('/api/projects/:projectId/assets', (req, res) => {
+app.get('/api/projects/:projectId/assets', async (req, res) => { // Added async
     const { projectId } = req.params;
     try {
-        const project = dataStore.findProjectById(projectId);
+        const project = await dataStore.findProjectById(projectId); // Added await
         if (!project) {
             return res.status(404).json({ error: 'Project not found.' });
         }
@@ -927,7 +928,7 @@ app.post('/api/projects/:projectId/assets/upload', upload.single('assetFile'), a
     }
 
     try {
-        const project = dataStore.findProjectById(projectId);
+        const project = await dataStore.findProjectById(projectId); // Added await
         if (!project) {
             return res.status(404).json({ error: 'Project not found.' });
         }
@@ -986,7 +987,7 @@ app.post('/api/projects/:projectId/assets/upload', upload.single('assetFile'), a
 
         // 7. Update Project's Assets Array
         const updatedAssets = [...(project.assets || []), newAsset]; // Ensure project.assets is an array
-        dataStore.updateProjectById(projectId, { assets: updatedAssets });
+        await dataStore.updateProjectById(projectId, { assets: updatedAssets }); // Added await
 
         // Add asset vector to in-memory store
         vectorService.addAssetVector(projectId, newAsset.assetId, newAsset.vector);
@@ -1011,7 +1012,7 @@ app.post('/api/projects/:projectId/assets/upload', upload.single('assetFile'), a
 // === OBJECTIVE API ENDPOINTS ===
 
 // POST /api/projects/:projectId/objectives - Create a new objective for a project
-app.post('/api/projects/:projectId/objectives', (req, res) => {
+app.post('/api/projects/:projectId/objectives', async (req, res) => { // Added async
     const { projectId } = req.params;
     const { title, brief } = req.body;
 
@@ -1020,7 +1021,7 @@ app.post('/api/projects/:projectId/objectives', (req, res) => {
     }
 
     console.log(`[server.js POST objective] Received projectId from req.params: "${projectId}"`);
-    const project = dataStore.findProjectById(projectId); // dataStore.findProjectById will log its own details
+    const project = await dataStore.findProjectById(projectId); // Added await, dataStore.findProjectById will log its own details
     if (!project) {
         // findProjectById already logs the failure, this specific log might be redundant
         // console.log(`[server.js POST objective] Initial project check FAILED for id: "${projectId}".`);
@@ -1032,7 +1033,7 @@ app.post('/api/projects/:projectId/objectives', (req, res) => {
         // Pass objective data (title, brief) and the validated project.id to dataStore.addObjective
         // The Objective instance will be created within dataStore.addObjective
         const objectiveData = { title, brief };
-        const savedObjective = dataStore.addObjective(objectiveData, project.id);
+        const savedObjective = await dataStore.addObjective(objectiveData, project.id); // Added await
 
         if (!savedObjective) {
             // This case might occur if dataStore.addObjective returns null (e.g., if its internal project check failed, though unlikely here as we checked 'project' already)
@@ -1048,22 +1049,23 @@ app.post('/api/projects/:projectId/objectives', (req, res) => {
 });
 
 // GET /api/projects/:projectId/objectives - Get all objectives for a project
-app.get('/api/projects/:projectId/objectives', (req, res) => {
+app.get('/api/projects/:projectId/objectives', async (req, res) => { // Added async
     const { projectId } = req.params;
 
     // Added logging
     console.log(`[SERVER LOG] Received request for objectives for projectId: ${projectId}`);
-    const currentProjectIds = dataStore.getAllProjects().map(p => p.id);
+    const allProjects = await dataStore.getAllProjects(); // Added await
+    const currentProjectIds = allProjects.map(p => p.id);
     console.log(`[SERVER LOG] Project IDs currently in dataStore: ${JSON.stringify(currentProjectIds)}`);
 
-    const project = dataStore.findProjectById(projectId);
+    const project = await dataStore.findProjectById(projectId); // Added await
     if (!project) {
         console.log(`[SERVER LOG] Project with ID ${projectId} NOT FOUND in dataStore.`); // Added for clarity
         return res.status(404).json({ error: 'Project not found' });
     }
     try {
         console.log(`[SERVER LOG] Project with ID ${projectId} found. Fetching objectives.`); // Added for clarity
-        const objectives = dataStore.getObjectivesByProjectId(projectId);
+        const objectives = await dataStore.getObjectivesByProjectId(projectId); // Added await
         res.status(200).json(objectives);
     } catch (error) {
         console.error(`[SERVER LOG] Error getting objectives for project ${projectId}:`, error);
@@ -1072,10 +1074,10 @@ app.get('/api/projects/:projectId/objectives', (req, res) => {
 });
 
 // GET /api/objectives/:objectiveId - Get a specific objective
-app.get('/api/objectives/:objectiveId', (req, res) => {
+app.get('/api/objectives/:objectiveId', async (req, res) => { // Added async
     const { objectiveId } = req.params;
     try {
-        const objective = dataStore.findObjectiveById(objectiveId);
+        const objective = await dataStore.findObjectiveById(objectiveId); // Added await
         if (!objective) {
             return res.status(404).json({ error: 'Objective not found' });
         }
@@ -1087,16 +1089,22 @@ app.get('/api/objectives/:objectiveId', (req, res) => {
 });
 
 // PUT /api/objectives/:objectiveId - Update an objective
-app.put('/api/objectives/:objectiveId', (req, res) => {
+app.put('/api/objectives/:objectiveId', async (req, res) => { // Added async
     const { objectiveId } = req.params;
-    const { title, brief } = req.body;
+    const { title, brief } = req.body; // Original: const { title, brief, plan } = req.body;
 
-    if (title === undefined && brief === undefined) {
-        return res.status(400).json({ error: 'At least title or brief must be provided for update' });
+    if (title === undefined && brief === undefined) { // Original: if (title === undefined && brief === undefined && plan === undefined) {
+        return res.status(400).json({ error: 'At least title or brief must be provided for update' }); // Adjusted message
     }
 
     try {
-        const updatedObjective = dataStore.updateObjectiveById(objectiveId, title, brief);
+        // Construct updateData object based on provided fields
+        const updateData = {};
+        if (title !== undefined) updateData.title = title;
+        if (brief !== undefined) updateData.brief = brief;
+        // if (plan !== undefined) updateData.plan = plan; // Removed plan from direct update here, handled by approve endpoint
+
+        const updatedObjective = await dataStore.updateObjectiveById(objectiveId, updateData); // Added await, changed params
         if (!updatedObjective) {
             return res.status(404).json({ error: 'Objective not found for update' });
         }
@@ -1108,10 +1116,10 @@ app.put('/api/objectives/:objectiveId', (req, res) => {
 });
 
 // DELETE /api/objectives/:objectiveId - Delete an objective
-app.delete('/api/objectives/:objectiveId', (req, res) => {
+app.delete('/api/objectives/:objectiveId', async (req, res) => { // Added async
     const { objectiveId } = req.params;
     try {
-        const success = dataStore.deleteObjectiveById(objectiveId);
+        const success = await dataStore.deleteObjectiveById(objectiveId); // Added await
         if (!success) {
             return res.status(404).json({ error: 'Objective not found for deletion' });
         }
@@ -1132,7 +1140,7 @@ app.post('/api/objectives/:objectiveId/chat', async (req, res) => {
     }
 
     try {
-        const objective = dataStore.findObjectiveById(objectiveId);
+        const objective = await dataStore.findObjectiveById(objectiveId); // Added await
         if (!objective) {
             return res.status(404).json({ error: 'Objective not found' });
         }
@@ -1141,9 +1149,9 @@ app.post('/api/objectives/:objectiveId/chat', async (req, res) => {
         const agentResponse = await getAgentResponse(userInput, objective.chatHistory, objectiveId);
 
         // Add user message to objective's chat history
-        dataStore.addMessageToObjectiveChat(objectiveId, 'user', userInput);
+        await dataStore.addMessageToObjectiveChat(objectiveId, 'user', userInput); // Added await
         // Add agent response to objective's chat history
-        dataStore.addMessageToObjectiveChat(objectiveId, 'agent', agentResponse);
+        await dataStore.addMessageToObjectiveChat(objectiveId, 'agent', agentResponse); // Added await
 
         res.json({ response: agentResponse });
 

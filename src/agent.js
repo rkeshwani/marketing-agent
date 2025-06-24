@@ -35,7 +35,7 @@ async function executeTool(toolName, toolArguments, projectId, objective) {
             // Note: projectId is passed for consistency, though execute_browse_web_tool might not use it directly yet.
             return await toolExecutorService.execute_browse_web_tool(url, projectId);
         case 'post_to_linkedin': {
-            const project = dataStore.findProjectById(projectId);
+            const project = await dataStore.findProjectById(projectId); // Added await
             if (!project || !project.linkedinAccessToken || !project.linkedinUserID) {
                 return JSON.stringify({ error: "LinkedIn account not connected or credentials missing for this project." });
             }
@@ -50,7 +50,7 @@ async function executeTool(toolName, toolArguments, projectId, objective) {
         // Google Ads Scaffold Tools
         case 'google_ads_create_campaign_scaffold': {
             console.log("Agent: Initiating google_ads_create_campaign_scaffold...");
-            const project = dataStore.findProjectById(projectId);
+            const project = await dataStore.findProjectById(projectId); // Added await
             const projectContext = project ? project.description || project.name : "No project context available.";
 
             const geminiPromptForConfig = await getPrompt('agent/google_ads_campaign_config', {
@@ -111,7 +111,7 @@ async function executeTool(toolName, toolArguments, projectId, objective) {
         }
         case 'google_ads_create_ad_group_scaffold': {
             console.log("Agent: Initiating google_ads_create_ad_group_scaffold...");
-            const project = dataStore.findProjectById(projectId);
+            const project = await dataStore.findProjectById(projectId); // Added await
             const projectContext = project ? project.description || project.name : "No project context available.";
             const campaignId = toolArguments.campaign_id;
 
@@ -148,7 +148,7 @@ async function executeTool(toolName, toolArguments, projectId, objective) {
         }
         case 'google_ads_create_ad_scaffold': {
             console.log("Agent: Initiating google_ads_create_ad_scaffold...");
-            const project = dataStore.findProjectById(projectId);
+            const project = await dataStore.findProjectById(projectId); // Added await
             const projectContext = project ? project.description || project.name : "No project context available.";
             const adGroupId = toolArguments.ad_group_id;
 
@@ -209,7 +209,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
     return "Agent: Objective context is missing. Cannot process request.";
   }
 
-  const objective = dataStore.findObjectiveById(objectiveId);
+  const objective = await dataStore.findObjectiveById(objectiveId); // Added await
 
   if (!objective) {
     console.error(`Agent: Objective with ID ${objectiveId} not found.`);
@@ -244,7 +244,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
         objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
 
         // Use dataStore consistently
-        dataStore.updateObjectiveById(objectiveId, objective);
+        await dataStore.updateObjectiveById(objectiveId, objective); // Added await
 
         return {
             message: errorMessage,
@@ -269,7 +269,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
           // Advance step even on error to avoid loop, or have a specific error state
           objective.plan.currentStepIndex = (pendingInfo.originalToolCall.stepIndex !== undefined ? pendingInfo.originalToolCall.stepIndex : objective.plan.currentStepIndex) + 1;
           objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
-          dataStore.updateObjectiveById(objectiveId, objective);
+          await dataStore.updateObjectiveById(objectiveId, objective); // Added await
           return {
               message: "Error: Could not retrieve the saved campaign details to proceed with budget. Please try creating the campaign again.",
               currentStep: objective.plan.currentStepIndex -1,
@@ -308,7 +308,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
       // The step is now considered complete, advance plan
       objective.plan.currentStepIndex = (pendingInfo.originalToolCall.stepIndex !== undefined ? pendingInfo.originalToolCall.stepIndex : objective.plan.currentStepIndex) + 1;
       objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
-      dataStore.updateObjectiveById(objectiveId, objective);
+      await dataStore.updateObjectiveById(objectiveId, objective); // Added await
 
 
       return {
@@ -342,7 +342,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
   console.log(`Agent: Plan approved for objective ${objectiveId}.`);
 
   // Fetch project assets early as they might be needed for step execution or conversational fallback
-  const project = dataStore.findProjectById(objective.projectId);
+  const project = await dataStore.findProjectById(objective.projectId); // Added await
   const projectAssets = project ? project.assets : [];
 
   // --- Plan Refresh for Recurring Tasks Activated by Scheduler ---
@@ -363,7 +363,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
         // Status remains 'approved', currentStepIndex remains 0.
         // No need to update originalPlan here, that's the template.
 
-        dataStore.updateObjectiveById(objective.id, objective); // Save the refreshed plan
+        await dataStore.updateObjectiveById(objective.id, objective); // Added await, Save the refreshed plan
         console.log(`Agent: Plan for recurring objective ${objectiveId} refreshed with new context.`);
     } catch (error) {
         console.error(`Agent: Error refreshing plan for recurring objective ${objectiveId}:`, error);
@@ -400,7 +400,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
         // No tool_call if executePlanStep itself failed, so directly update plan and return
         objective.plan.currentStepIndex = currentStepIndex + 1;
         objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
-        dataStore.updateObjectiveById(objectiveId, objective);
+        await dataStore.updateObjectiveById(objectiveId, objective); // Added await
         return {
             message: finalMessageForStep,
             currentStep: currentStepIndex,
@@ -488,7 +488,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
                     // Add agent's question to chat history
                     objective.chatHistory.push({ speaker: 'agent', content: toolOutput.message });
                     // Save objective with pendingToolBudgetInquiry and new chat history
-                    dataStore.updateObjectiveById(objectiveId, objective);
+                    await dataStore.updateObjectiveById(objectiveId, objective); // Added await
                     return toolOutput; // Return the { askUserInput, message } object directly
                 }
 
@@ -518,7 +518,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
                     objective.plan.currentStepIndex = currentStepIndex + 1;
                     objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress';
                     // dataStore.updateObjectiveById(objectiveId, objective); // This line is redundant, the next one updates the whole object.
-                    dataStore.updateObjectiveById(objective.id, objective);
+                    await dataStore.updateObjectiveById(objective.id, objective); // Added await
                     return {
                         message: finalMessageForStep,
                         currentStep: currentStepIndex,
@@ -557,7 +557,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
     objective.plan.currentStepIndex = currentStepIndex + 1; // Increment step index
     objective.plan.status = (objective.plan.currentStepIndex >= objective.plan.steps.length) ? 'completed' : 'in_progress'; // Update status if all steps done
 
-    dataStore.updateObjectiveById(objectiveId, objective);
+    await dataStore.updateObjectiveById(objectiveId, objective); // Added await
     // Ensure the full objective is updated in the data store
 
     if (objective.plan.status === 'completed' && objective.plan.currentStepIndex >= objective.plan.steps.length) {
@@ -642,7 +642,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
         // --- End Recurrence Logic ---
 
         // Update objective in dataStore after recurrence handling
-        dataStore.updateObjectiveById(objective.id, objective);
+        await dataStore.updateObjectiveById(objective.id, objective); // Added await
 
         return {
             message: finalMessageForStep ? 'Plan instance completed! Last step result: ' + finalMessageForStep : 'Plan instance completed!',
@@ -686,7 +686,7 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
     // --- End Recurrence Check ---
 
     objective.plan.status = 'completed'; // Ensure status is 'completed' if no recurrence logic changes it
-    dataStore.updateObjectiveById(objective.id, objective); // Update the objective
+    await dataStore.updateObjectiveById(objective.id, objective); // Added await, Update the objective
 
     return {
       message: 'All plan steps completed!', // General message for this state
@@ -726,13 +726,13 @@ async function getAgentResponse(userInput, chatHistory, objectiveId) {
  * @throws {Error} If the objective is not found.
  */
 async function initializeAgent(objectiveId) {
-    const objective = dataStore.findObjectiveById(objectiveId);
+    const objective = await dataStore.findObjectiveById(objectiveId); // Added await
     if (!objective) {
         throw new Error(`Objective with ID ${objectiveId} not found.`);
     }
 
     // Call the new service function to generate the plan
-    const project = dataStore.findProjectById(objective.projectId);
+    const project = await dataStore.findProjectById(objective.projectId); // Added await
     const projectAssets = project ? project.assets : [];
     let planData;
     try {
@@ -745,7 +745,7 @@ async function initializeAgent(objectiveId) {
             // Use the user-friendly message for questions, or a specific retry prompt
             objective.plan.questions = [planData.errorMessageForUser + " You can try again by typing '/retry plan' or '/regenerate plan'."];
             objective.plan.canRetryPlanGeneration = planData.canRetryPlanGeneration; // Store the retry flag
-            dataStore.updateObjectiveById(objective.id, objective);
+            await dataStore.updateObjectiveById(objective.id, objective); // Added await
             // We might not want to throw a generic error here if the UI is meant to handle the retry message.
             // For now, let's re-throw to keep existing top-level error handling aware, but this could be refined.
             throw new Error(planData.errorMessageForUser);
@@ -767,7 +767,7 @@ async function initializeAgent(objectiveId) {
             objective.plan.questions = [error.message.includes("Would you like to try again?") ? error.message : `Failed to generate plan: ${error.message}. You can try again by typing '/retry plan' or '/regenerate plan'.`];
             objective.plan.canRetryPlanGeneration = true;
         }
-        dataStore.updateObjectiveById(objective.id, objective);
+        await dataStore.updateObjectiveById(objective.id, objective); // Added await
         throw error; // Re-throw original or new error to inform caller
     }
     // const { planSteps, questions } = planData; // Moved inside the try if successful
@@ -788,7 +788,7 @@ async function initializeAgent(objectiveId) {
     // Save the updated objective
     // Ensuring consistency with the 5-argument version used elsewhere.
     // Note: objective.originalPlan is now also part of the objective being saved if it's recurring
-    const updatedObjective = dataStore.updateObjectiveById(objectiveId, objective);
+    const updatedObjective = await dataStore.updateObjectiveById(objectiveId, objective); // Added await
 
     if (!updatedObjective) {
         // This case should ideally not be reached if findObjectiveById succeeded and dataStore is consistent
