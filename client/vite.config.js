@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/proxy/', // Set the base path for the application
+  base: '/proxy', // Set the base path for the application (no trailing slash)
   server: {
     hmr: {
       // If your Vite dev server is running on, say, port 5173,
