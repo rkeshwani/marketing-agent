@@ -5,7 +5,10 @@
   "scripts": {
     "start": "node src/server.js",
     "test": "jest",
-    "server": "node src/server.js"
+    "server": "node src/server.js",
+    "client": "cd client && npm run dev",
+    "build:client": "cd client && npm install && npm run build",
+    "dev": "concurrently \"npm run server\" \"npm run client\""
   },
   "dependencies": {
     "@pinecone-database/pinecone": "^6.1.1",

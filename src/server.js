@@ -1,40 +1,43 @@
 const express = require('express');
-const path = require('path'); // Import the 'path' module
-const axios = require('axios'); // For making HTTP requests
-const session = require('express-session'); // For session management
-const crypto = require('crypto'); // For generating 'state' string
-const { google } = require('googleapis'); // Added for Google Drive
-const multer = require('multer'); // Added for file uploads
-const stream = require('stream'); // Added for Google Drive file upload
-const vectorService = require('./services/vectorService'); // Added for embeddings
-const { getAgentResponse, initializeAgent } = require('./agent'); // Modified to import initializeAgent
-const { generateProjectContextQuestions, structureProjectContextAnswers } = require('./services/geminiService'); // Added for project context
+const path = require('path');
+const axios = require('axios');
+const session = require('express-session');
+const crypto = require('crypto');
+const { google } = require('googleapis');
+const multer = require('multer');
+const stream = require('stream');
+const vectorService = require('./services/vectorService');
+const { getAgentResponse, initializeAgent, agent } = require('./agent'); // Import the agent instance
+const { generateProjectContextQuestions, structureProjectContextAnswers } = require('./services/geminiService');
 const Project = require('./models/Project');
 const Objective = require('./models/Objective');
 const dataStore = require('./dataStore');
-const SchedulerService = require('./services/schedulerService'); // Added: Import SchedulerService
+const SchedulerService = require('./services/schedulerService');
 const app = express();
 const port = process.env.PORT || 3000;
 
+// --- CopilotKit Backend Imports ---
+const { CopilotRuntime } = require('@copilotkit/backend');
+
 // --- Initialize Scheduler ---
 const schedulerServiceInstance = new SchedulerService(dataStore);
-const SCHEDULER_INTERVAL_MS = 60 * 1000; // Check every minute
+const SCHEDULER_INTERVAL_MS = 60 * 1000;
 
 // --- OAuth & App Configuration Placeholders ---
 const FACEBOOK_APP_ID = process.env.FACEBOOK_APP_ID || 'YOUR_FACEBOOK_APP_ID';
 const FACEBOOK_APP_SECRET = process.env.FACEBOOK_APP_SECRET || 'YOUR_FACEBOOK_APP_SECRET';
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY || 'YOUR_TIKTOK_CLIENT_KEY';
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET || 'YOUR_TIKTOK_CLIENT_SECRET';
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID'; // Added
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || 'YOUR_GOOGLE_CLIENT_SECRET'; // Added
-const GOOGLE_REDIRECT_URI = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/auth/google/callback` : `http://localhost:${port}/auth/google/callback`; // Added
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'YOUR_GOOGLE_CLIENT_ID';
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || 'YOUR_GOOGLE_CLIENT_SECRET';
+const GOOGLE_REDIRECT_URI = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/auth/google/callback` : `http://localhost:${port}/auth/google/callback`;
 
 // LinkedIn App Configuration
-const config = require('./config/config'); // Added to import config
+const config = require('./config/config');
 const LINKEDIN_APP_ID = config.LINKEDIN_APP_ID || 'YOUR_LINKEDIN_APP_ID';
 const LINKEDIN_APP_SECRET = config.LINKEDIN_APP_SECRET || 'YOUR_LINKEDIN_APP_SECRET';
 const LINKEDIN_REDIRECT_URI = process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/auth/linkedin/callback` : `http://localhost:${port}/auth/linkedin/callback`;
-const LINKEDIN_SCOPES = 'r_liteprofile r_emailaddress w_member_social'; // Added scopes
+const LINKEDIN_SCOPES = 'r_liteprofile r_emailaddress w_member_social';
 
 const APP_BASE_URL = process.env.APP_BASE_URL || `http://localhost:${port}`;
 
@@ -46,26 +49,174 @@ const oauth2Client = new google.auth.OAuth2(
 );
 
 // --- Multer Configuration (for file uploads) ---
-const upload = multer({ storage: multer.memoryStorage() }); // Using memory storage for now
+const upload = multer({ storage: multer.memoryStorage() });
 
 // Middleware to parse JSON bodies
 app.use(express.json());
 
 // Session Middleware Setup
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'your_very_secret_key_for_session_dev', // Replace with a real secret in production
+    secret: process.env.SESSION_SECRET || 'your_very_secret_key_for_session_dev',
     resave: false,
     saveUninitialized: true,
-    cookie: { secure: process.env.NODE_ENV === 'production' } // For HTTP, set to true if using HTTPS in prod
+    cookie: { secure: process.env.NODE_ENV === 'production' }
 }));
 
+// --- CopilotKit Agent API Endpoint ---
+app.all('/api/agent', async (req, res) => {
+    const { objectiveId } = req.body; // Or req.query, or req.headers - depends on how client sends it
+    console.log('[CopilotKit Endpoint] Request received for /api/agent/');
+    console.log('[CopilotKit Endpoint] Objective ID from request:', objectiveId); // Log to see if we get it
+
+    // TODO: How to make the agent context specific to objectiveId?
+    // The `agent` imported from agent.js is a singleton.
+    // We need to either:
+    // 1. Pass objectiveId to the agent's methods if they support it.
+    // 2. Create/configure a new agent instance per request (less ideal for stateful agents but possible for stateless).
+    // 3. Modify the agent to be able to dynamically load context based on objectiveId.
+
+    // For now, let's assume the main `agent` can be used, and we'll need to adapt it.
+    // A simple way to pass context might be through the forwardHeaders or by modifying the agent itself.
+
+    // Placeholder: If objectiveId is present, log it. The actual use of objectiveId
+    // to scope agent actions and memory will need deeper integration into `agent.js`
+    // and how it's used by CopilotRuntime.
+    if (objectiveId) {
+        console.log(`[CopilotKit Endpoint] Context: Objective ID = ${objectiveId}`);
+        // This is where you would typically fetch the objective's details,
+        // chat history, plan, etc., and provide it to the agent instance
+        // or to specific tools/actions used by the agent.
+        // For example, if agent.js methods can accept an objective context:
+        // agent.setObjectiveContext(await dataStore.findObjectiveById(objectiveId));
+    }
+
+
+    const copilotRuntime = new CopilotRuntime();
+    try {
+        // The `agent` from agent.js needs to be adapted to provide functions/tools
+        // in the way CopilotRuntime expects. This is a placeholder.
+        // The actual agent logic (getAgentResponse, initializeAgent) needs to be
+        // refactored or wrapped to fit the CopilotKit execution model.
+        // For a very basic start, we might just forward to a simple LangChain chain or similar
+        // that's compatible with CopilotRuntime.
+
+        // This is a highly simplified example. The real agent logic is more complex.
+        // We need to make `agent.js` expose something that CopilotRuntime can use,
+        // potentially by wrapping its core logic in functions that CopilotKit can call.
+        // For now, a dummy action:
+        const result = await copilotRuntime.run({
+            // TODO: Replace with actual agent logic from agent.js
+            // This might involve creating a Langchain compatible chain or agent executor
+            // that uses the tools and LLM from our existing agent.js
+            // For now, let's assume `agent` has a method like `processCopilotRequest`
+            // or we define a simple function here.
+             handler: async (payload) => {
+                // Payload will contain messages, etc.
+                // Here, you'd call your existing agent logic.
+                // The `objectiveId` needs to be available here to pass to getAgentResponse.
+                // This is a critical point for context.
+                const currentObjectiveId = payload.copilotContext?.objectiveId || objectiveId || req.headers['x-objective-id'];
+                if (!currentObjectiveId) {
+                    return {
+                        stream: null, // Or some error message
+                        result: { type: "error", message: "Objective ID is missing. Cannot process request." }
+                    };
+                }
+
+                const objective = await dataStore.findObjectiveById(currentObjectiveId);
+                if (!objective) {
+                     return { result: { type: "error", message: "Objective not found." } };
+                }
+
+                const lastUserMessage = payload.messages[payload.messages.length - 1];
+                if (lastUserMessage.role !== 'user') {
+                    return { result: { type: "error", message: "Last message not from user." } };
+                }
+
+                // This is where the main call to our existing agent logic would go.
+                // We need to adapt getAgentResponse or the agent itself.
+                // For now, let's simulate a simple text response.
+                // const agentResponseText = await getAgentResponse(lastUserMessage.content, objective.chatHistory, currentObjectiveId);
+                // await dataStore.addMessageToObjectiveChat(currentObjectiveId, 'user', lastUserMessage.content);
+                // await dataStore.addMessageToObjectiveChat(currentObjectiveId, 'agent', agentResponseText);
+
+                // CopilotRuntime expects a specific return structure, often involving a stream.
+                // For simplicity, let's just return a text content for now.
+                // The actual integration will involve making agent.js compatible with streaming and tool calls.
+                // This will likely involve changes to how getAgentResponse works or wrapping it.
+                // For a simple text streaming response:
+                // return { stream: new ReadableStream({ start(controller) { controller.enqueue(JSON.stringify({ type: 'text', content: agentResponseText })); controller.close(); }}) };
+
+                // --- Start: Actual Agent Logic Integration ---
+                const agentResponsePayload = await getAgentResponse(lastUserMessage.content, objective.chatHistory, currentObjectiveId);
+
+                let responseStream = new stream.Readable({ read() {} });
+
+                if (typeof agentResponsePayload === 'string') { // Simple text response
+                    await dataStore.addMessageToObjectiveChat(currentObjectiveId, 'user', lastUserMessage.content);
+                    await dataStore.addMessageToObjectiveChat(currentObjectiveId, 'agent', agentResponsePayload);
+                    responseStream.push(JSON.stringify({ type: "text", content: agentResponsePayload }) + "\n");
+                } else if (typeof agentResponsePayload === 'object' && agentResponsePayload !== null) {
+                    // This handles more complex responses, like plan updates or tool calls (though tool calls are not yet fully piped through CopilotKit here)
+                    await dataStore.addMessageToObjectiveChat(currentObjectiveId, 'user', lastUserMessage.content);
+
+                    let messageToUser = agentResponsePayload.message || "Processing your request...";
+                    if (agentResponsePayload.stepDescription) {
+                        messageToUser = `${agentResponsePayload.stepDescription}\n\n${messageToUser}`;
+                    }
+                    await dataStore.addMessageToObjectiveChat(currentObjectiveId, 'agent', messageToUser);
+
+                    responseStream.push(JSON.stringify({ type: "text", content: messageToUser }) + "\n");
+
+                    // If plan was updated by the agent, persist it
+                    if (agentResponsePayload.planStatus && objective.plan) {
+                        const updatedPlan = {
+                            ...objective.plan,
+                            status: agentResponsePayload.planStatus,
+                            currentStepIndex: agentResponsePayload.currentStep !== undefined ? agentResponsePayload.currentStep + 1 : objective.plan.currentStepIndex,
+                        };
+                        if(agentResponsePayload.planSteps) updatedPlan.steps = agentResponsePayload.planSteps;
+                        await dataStore.updateObjectiveById(currentObjectiveId, { plan: updatedPlan });
+                        // Optionally, send a separate message or UI update signal about the plan change
+                        // For now, the text response includes plan step description.
+                    }
+                    // TODO: Handle actual tool calls and generative UI streaming from agentResponsePayload if it contains tool_call info.
+                    // This requires agent.js to be refactored to work with CopilotKit's tool execution model.
+                } else {
+                    responseStream.push(JSON.stringify({ type: "error", message: "Received unexpected response type from agent." }) + "\n");
+                }
+
+                responseStream.push(null); // End of stream
+                return { stream: responseStream };
+                // --- End: Actual Agent Logic Integration ---
+            },
+            copilotContext: {
+                objectiveId: objectiveId || req.body.objectiveId || req.headers['x-objective-id'],
+            },
+            req
+        });
+        res.setHeader('Content-Type', 'application/json');
+        if (result.stream) {
+            result.stream.pipe(res);
+        } else if (result.result) { // Handle direct results if stream is not available (e.g. error before stream)
+            res.status(result.result.type === "error" ? 500 : 200).json(result.result);
+        } else {
+            console.error('[CopilotKit Endpoint] No stream or result produced by CopilotRuntime.');
+            res.status(500).json({ error: 'Internal server error: No response from CopilotRuntime.'});
+        }
+
+    } catch (error) {
+        console.error('[CopilotKit Endpoint] Error in CopilotRuntime or handler:', error);
+        res.status(500).json({ error: 'Error processing CopilotKit request' });
+    }
+});
+
+
 // Serve static files from the 'public' directory
-// Assuming server.js is in src, and public is one level up from src
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // === SOCIAL MEDIA AUTHENTICATION ROUTES ===
-
-// --- LinkedIn Auth ---
+// ... (Existing social media auth routes remain unchanged) ...
 // Step 1: Redirect user to LinkedIn for authentication
 app.get('/auth/linkedin', (req, res) => {
     const state = crypto.randomBytes(16).toString('hex');
@@ -161,7 +312,7 @@ app.get('/auth/linkedin/callback', async (req, res) => {
 });
 
 // --- LinkedIn Project Finalization API ---
-app.post('/api/linkedin/finalize-project', async (req, res) => { // Added async
+app.post('/api/linkedin/finalize-project', async (req, res) => {
     const { state, projectName, projectDescription } = req.body;
 
     if (!projectName) {
@@ -183,7 +334,6 @@ app.post('/api/linkedin/finalize-project', async (req, res) => { // Added async
     }
 
     try {
-        // Assuming LINKEDIN_SCOPES is a string of space-separated scopes
         const permissionsArray = LINKEDIN_SCOPES ? LINKEDIN_SCOPES.split(' ') : [];
 
         const projectData = {
@@ -194,11 +344,11 @@ app.post('/api/linkedin/finalize-project', async (req, res) => { // Added async
             linkedinUserFirstName: sessionState.linkedinUserFirstName,
             linkedinUserLastName: sessionState.linkedinUserLastName,
             linkedinUserEmail: sessionState.linkedinUserEmail,
-            linkedinPermissions: permissionsArray, // Use the scopes defined at the top
+            linkedinPermissions: permissionsArray,
         };
 
-        const newProject = await dataStore.addProject(projectData); // Added await
-        delete req.session[state]; // Clean up session
+        const newProject = await dataStore.addProject(projectData);
+        delete req.session[state];
         res.status(201).json(newProject);
 
     } catch (error) {
@@ -208,23 +358,21 @@ app.post('/api/linkedin/finalize-project', async (req, res) => { // Added async
 });
 
 // --- Facebook Auth ---
-// Step 1: Redirect user to Facebook for authentication
 app.get('/auth/facebook', (req, res) => {
     const state = crypto.randomBytes(16).toString('hex');
-    req.session[state] = { initiated: true, service: 'facebook' }; // Store state server-side
+    req.session[state] = { initiated: true, service: 'facebook' };
 
     const facebookAuthUrl = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${FACEBOOK_APP_ID}` +
         `&redirect_uri=${APP_BASE_URL}/auth/facebook/callback` +
-        `&scope=public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts` + // Removed pages_manage_ads for now, add if essential
+        `&scope=public_profile,email,pages_show_list,pages_read_engagement,pages_manage_posts` +
         `&state=${state}` +
         `&response_type=code`;
 
     res.redirect(facebookAuthUrl);
 });
 
-// Step 2: Facebook callback with authorization code
 app.get('/auth/facebook/callback', async (req, res) => {
-    const { code, state, error: fbError, error_reason: fbErrorReason, error_description: fbErrorDescription } = req.query; // Facebook error params
+    const { code, state, error: fbError, error_reason: fbErrorReason, error_description: fbErrorDescription } = req.query;
     const sessionState = req.session[state];
 
     if (fbError) {
@@ -235,18 +383,17 @@ app.get('/auth/facebook/callback', async (req, res) => {
 
     if (!sessionState || !sessionState.initiated || sessionState.service !== 'facebook') {
         console.error('Facebook auth callback error: Invalid state or session expired.', { queryState: state, sessionStateExists: !!sessionState });
-        if (sessionState) delete req.session[state]; // Clean up potentially partial session
+        if (sessionState) delete req.session[state];
         return res.redirect('/?message=Error+connecting+Facebook:+Invalid+session+or+state&status=error');
     }
 
     if (!code) {
         console.error('Facebook auth callback error: No code provided, but no error from Facebook.', req.query);
-        delete req.session[state]; // Clean up session
+        delete req.session[state];
         return res.redirect('/?message=Error+connecting+Facebook:+Authentication+code+missing&status=error');
     }
 
     try {
-        // Exchange code for access token
         const tokenResponse = await axios.get(`https://graph.facebook.com/v19.0/oauth/access_token`, {
             params: {
                 client_id: FACEBOOK_APP_ID,
@@ -263,25 +410,20 @@ app.get('/auth/facebook/callback', async (req, res) => {
             return res.redirect('/?message=Error+connecting+Facebook:+Failed+to+obtain+access+token&status=error');
         }
 
-        // Fetch user's Facebook Pages
         const pagesResponse = await axios.get(`https://graph.facebook.com/me/accounts`, {
             params: { access_token: userAccessToken }
         });
 
-        const pagesData = pagesResponse.data.data; // Array of page objects
+        const pagesData = pagesResponse.data.data;
 
-        // Store token and pages in session, associated with the state
         req.session[state].fbUserToken = userAccessToken;
         req.session[state].fbPages = pagesData;
-        // Also fetch basic user profile to get facebookUserID
         const userProfileResponse = await axios.get(`https://graph.facebook.com/me`, {
             params: { fields: 'id,name,email', access_token: userAccessToken }
         });
         req.session[state].facebookUserID = userProfileResponse.data.id;
-        req.session[state].facebookUserEmail = userProfileResponse.data.email; // Optional
+        req.session[state].facebookUserEmail = userProfileResponse.data.email;
 
-        // Redirect to a frontend page to select a Facebook Page
-        // This page will then call another backend endpoint to finalize project creation/update
         res.redirect(`/select-facebook-page.html?state=${state}`);
 
     } catch (error) {
@@ -295,37 +437,28 @@ app.get('/auth/facebook/callback', async (req, res) => {
 });
 
 // --- PROJECT CONTEXT API ENDPOINTS ---
-
-// POST /api/projects/:projectId/context-questions - Generate and store context questions
 app.post('/api/projects/:projectId/context-questions', async (req, res) => {
     const { projectId } = req.params;
     try {
-        const project = await dataStore.findProjectById(projectId); // Added await
+        const project = await dataStore.findProjectById(projectId);
         if (!project) {
             return res.status(404).json({ error: 'Project not found' });
         }
 
         const questions = await generateProjectContextQuestions(project.name, project.description);
-
-        // Ensure project.projectContextQuestions is initialized if it's not already
         project.projectContextQuestions = questions;
-
-        const updatedProjectResult = await dataStore.updateProjectById(projectId, { projectContextQuestions: questions }); // Added await
+        const updatedProjectResult = await dataStore.updateProjectById(projectId, { projectContextQuestions: questions });
         if (!updatedProjectResult) {
-             // This case should ideally not happen if findProjectById succeeded
             console.error(`Failed to update project ${projectId} with context questions.`);
             return res.status(500).json({ error: 'Failed to save context questions to project.' });
         }
-
         res.status(200).json(questions);
-
     } catch (error) {
         console.error(`Error generating context questions for project ${projectId}:`, error);
         res.status(500).json({ error: 'Failed to generate project context questions due to a server error.' });
     }
 });
 
-// POST /api/projects/:projectId/context-answers - Submit and structure context answers
 app.post('/api/projects/:projectId/context-answers', async (req, res) => {
     const { projectId } = req.params;
     const { userAnswersString } = req.body;
@@ -333,52 +466,39 @@ app.post('/api/projects/:projectId/context-answers', async (req, res) => {
     if (!userAnswersString) {
         return res.status(400).json({ error: 'userAnswersString is required in the request body.' });
     }
-
     try {
-        const project = await dataStore.findProjectById(projectId); // Added await
+        const project = await dataStore.findProjectById(projectId);
         if (!project) {
             return res.status(404).json({ error: 'Project not found' });
         }
-
         const structuredAnswers = await structureProjectContextAnswers(project.name, project.description, userAnswersString);
-
-        // Ensure project.projectContextAnswers is initialized
         project.projectContextAnswers = structuredAnswers;
-
-        const updatedProjectResult = await dataStore.updateProjectById(projectId, { projectContextAnswers: structuredAnswers }); // Added await
+        const updatedProjectResult = await dataStore.updateProjectById(projectId, { projectContextAnswers: structuredAnswers });
          if (!updatedProjectResult) {
-            // This case should ideally not happen if findProjectById succeeded
             console.error(`Failed to update project ${projectId} with structured context answers.`);
             return res.status(500).json({ error: 'Failed to save structured context answers to project.' });
         }
-
         res.status(200).json({ message: 'Context answers submitted and structured successfully', projectContextAnswers: structuredAnswers });
-
     } catch (error) {
         console.error(`Error processing context answers for project ${projectId}:`, error);
         res.status(500).json({ error: 'Failed to process project context answers due to a server error.' });
     }
 });
 
-// DELETE /api/projects/:projectId/assets/:assetId - Delete an asset from a project
 app.delete('/api/projects/:projectId/assets/:assetId', async (req, res) => {
     const { projectId, assetId } = req.params;
-
     try {
-        const project = await dataStore.findProjectById(projectId); // Added await
+        const project = await dataStore.findProjectById(projectId);
         if (!project) {
             return res.status(404).json({ error: 'Project not found.' });
         }
-
         const assetIndex = project.assets ? project.assets.findIndex(a => a.assetId === assetId) : -1;
         if (assetIndex === -1) {
             return res.status(404).json({ error: 'Asset not found in project.' });
         }
-
         const assetToDelete = project.assets[assetIndex];
         const googleDriveFileId = assetToDelete.googleDriveFileId;
 
-        // Attempt to delete from Google Drive if configured
         if (googleDriveFileId && project.googleDriveAccessToken) {
             const driveClient = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
             driveClient.setCredentials({
@@ -386,85 +506,58 @@ app.delete('/api/projects/:projectId/assets/:assetId', async (req, res) => {
                 refresh_token: project.googleDriveRefreshToken,
             });
             const drive = google.drive({ version: 'v3', auth: driveClient });
-
             try {
                 console.log(`Attempting to delete asset ${assetId} (Drive ID: ${googleDriveFileId}) from Google Drive.`);
                 await drive.files.delete({ fileId: googleDriveFileId });
                 console.log(`Successfully deleted asset ${assetId} from Google Drive.`);
             } catch (driveError) {
-                // Log GDrive deletion error but proceed to remove from app's datastore
                 console.error(`Failed to delete asset ${assetId} (Drive ID: ${googleDriveFileId}) from Google Drive:`,
                     driveError.response ? driveError.response.data : driveError.message);
-                // If it's a critical auth error, maybe we should stop? For now, we'll log and proceed.
-                // e.g. if (driveError.code === 401) return res.status(500).json({ error: 'Google Drive auth error during deletion.'});
                 if (driveError.response && driveError.response.status === 404) {
                     console.warn(`Asset ${assetId} (Drive ID: ${googleDriveFileId}) not found on Google Drive. Proceeding with local deletion.`);
-                } else {
-                    // For other errors, we might still want to proceed with local deletion.
-                    // Depending on policy, could return an error here.
                 }
             }
         } else if (googleDriveFileId) {
             console.warn(`Asset ${assetId} has a Google Drive File ID but project is missing GDrive token. Cannot delete from Drive.`);
         }
-
-        // Remove from Vector Store
         vectorService.removeAssetVector(projectId, assetId);
-
-        // Remove from Project Assets Array in DataStore
         const updatedAssets = project.assets.filter(a => a.assetId !== assetId);
-        await dataStore.updateProjectById(projectId, { assets: updatedAssets }); // Added await
-
+        await dataStore.updateProjectById(projectId, { assets: updatedAssets });
         res.status(200).json({ message: 'Asset deleted successfully.' });
-
     } catch (error) {
         console.error(`Error deleting asset ${assetId} for project ${projectId}:`, error);
         res.status(500).json({ error: 'Failed to delete asset due to a server error.' });
     }
 });
 
-// POST /api/objectives/:objectiveId/plan/approve - Approve the plan for an objective
-app.post('/api/objectives/:objectiveId/plan/approve', async (req, res) => { // Added async
+app.post('/api/objectives/:objectiveId/plan/approve', async (req, res) => {
     const { objectiveId } = req.params;
     try {
-        const objective = await dataStore.findObjectiveById(objectiveId); // Added await
-
+        const objective = await dataStore.findObjectiveById(objectiveId);
         if (!objective) {
             return res.status(404).json({ error: 'Objective not found to approve plan for' });
         }
-
         if (!objective.plan) {
-            // This case should ideally not be hit if objectives always initialize with a plan structure
             return res.status(404).json({ error: 'Plan not found for this objective. Initialize it first.' });
         }
-
         objective.plan.status = 'approved';
-        objective.updatedAt = new Date(); // Also update the objective's updatedAt timestamp
-
-        // dataStore.updateObjectiveById was already modified to handle plan updates
-        // The updateObjectiveById now takes (objectiveId, updateData)
-        const updatedObjective = await dataStore.updateObjectiveById(objective.id, { plan: objective.plan, updatedAt: objective.updatedAt }); // Added await and changed params
-
+        objective.updatedAt = new Date();
+        const updatedObjective = await dataStore.updateObjectiveById(objective.id, { plan: objective.plan, updatedAt: objective.updatedAt });
         if (!updatedObjective) {
-            // This might happen if findObjectiveById found it, but updateObjectiveById failed internally
-            // which is unlikely given current dataStore logic but good to be defensive.
             console.error(`Failed to update objective ${objectiveId} after attempting to approve plan.`);
             return res.status(500).json({ error: 'Failed to save approved plan status.' });
         }
-
         res.status(200).json(updatedObjective);
-
     } catch (error) {
         console.error(`Error approving plan for objective ${objectiveId}:`, error);
         res.status(500).json({ error: 'Failed to approve plan due to a server error.' });
     }
 });
 
-// POST /api/objectives/:objectiveId/initialize-agent - Initialize agent and generate plan
 app.post('/api/objectives/:objectiveId/initialize-agent', async (req, res) => {
     const { objectiveId } = req.params;
     try {
-        const updatedObjective = await initializeAgent(objectiveId); // Corrected: use initializeAgent
+        const updatedObjective = await initializeAgent(objectiveId);
         res.status(200).json(updatedObjective);
     } catch (error) {
         console.error(`Error initializing agent for objective ${objectiveId}:`, error);
@@ -477,33 +570,29 @@ app.post('/api/objectives/:objectiveId/initialize-agent', async (req, res) => {
 });
 
 // --- TikTok Project Finalization API ---
-app.post('/api/tiktok/finalize-project', async (req, res) => { // Added async
+app.post('/api/tiktok/finalize-project', async (req, res) => {
     const { state, projectName, projectDescription } = req.body;
-
-    if (!projectName) { // Specific check for projectName
+    if (!projectName) {
         return res.status(400).json({ error: 'Project name is required.' });
     }
     if (!state) {
         return res.status(400).json({ error: 'Missing state field. Cannot finalize project.' });
     }
-
     const sessionState = req.session[state];
     if (!sessionState ||
         sessionState.service !== 'tiktok' ||
-        !sessionState.initiated || // Check initiated flag
+        !sessionState.initiated ||
         !sessionState.tiktokAccessToken ||
         !sessionState.tiktokUserID
     ) {
         console.error('API /api/tiktok/finalize-project error: Invalid session state or missing TikTok data.', { bodyState: state, sessionDataExists: !!sessionState });
         return res.status(400).json({ error: 'Invalid session state or required connection data not found. Please try reconnecting your TikTok account.' });
     }
-
     try {
         let permissionsArray = [];
         if (sessionState.tiktokScope) {
             permissionsArray = Array.isArray(sessionState.tiktokScope) ? sessionState.tiktokScope : sessionState.tiktokScope.split(',');
         }
-
         const projectData = {
             name: projectName,
             description: projectDescription || '',
@@ -511,11 +600,9 @@ app.post('/api/tiktok/finalize-project', async (req, res) => { // Added async
             tiktokUserID: sessionState.tiktokUserID,
             tiktokPermissions: permissionsArray,
         };
-
-        const newProject = await dataStore.addProject(projectData); // Added await
+        const newProject = await dataStore.addProject(projectData);
         delete req.session[state];
         res.status(201).json(newProject);
-
     } catch (error) {
         console.error('Error in POST /api/tiktok/finalize-project while saving project:', error);
         res.status(500).json({ error: 'Failed to save project data. Please try again.' });
@@ -523,51 +610,38 @@ app.post('/api/tiktok/finalize-project', async (req, res) => { // Added async
 });
 
 // --- TikTok Auth ---
-// Step 1: Redirect user to TikTok for authentication
 app.get('/auth/tiktok', (req, res) => {
     const state = crypto.randomBytes(16).toString('hex');
     req.session[state] = { initiated: true, service: 'tiktok' };
-
-    // TikTok scopes: user.info.basic, video.list, video.upload.
-    // ads_management or video.publish.gia might require advanced permissions/developer program levels.
-    // For now, using user.info.basic as a starting point.
-    const tiktokScope = 'user.info.basic'; // Add more scopes as needed and approved by TikTok
-
+    const tiktokScope = 'user.info.basic';
     const tiktokAuthUrl = `https://www.tiktok.com/v2/auth/authorize/` +
         `?client_key=${TIKTOK_CLIENT_KEY}` +
         `&scope=${tiktokScope}` +
         `&response_type=code` +
         `&redirect_uri=${APP_BASE_URL}/auth/tiktok/callback` +
         `&state=${state}`;
-
     res.redirect(tiktokAuthUrl);
 });
 
-// Step 2: TikTok callback with authorization code
 app.get('/auth/tiktok/callback', async (req, res) => {
-    const { code, state, error: tkError, error_description: tkErrorDescription } = req.query; // TikTok error params
+    const { code, state, error: tkError, error_description: tkErrorDescription } = req.query;
     const sessionState = req.session[state];
-
     if (tkError) {
         console.error(`TikTok auth callback error: ${tkError} - ${tkErrorDescription}`, req.query);
         if (sessionState) delete req.session[state];
         return res.redirect(`/?message=Error+connecting+TikTok:+${encodeURIComponent(tkErrorDescription || 'Authentication_failed')}&status=error`);
     }
-
     if (!sessionState || !sessionState.initiated || sessionState.service !== 'tiktok') {
         console.error('TikTok auth callback error: Invalid state or session expired.', { queryState: state, sessionStateExists: !!sessionState });
-        if (sessionState) delete req.session[state]; // Clean up
+        if (sessionState) delete req.session[state];
         return res.redirect('/?message=Error+connecting+TikTok:+Invalid+session+or+state&status=error');
     }
-
     if (!code) {
         console.error('TikTok auth callback error: No code provided, but no error from TikTok.', req.query);
-        delete req.session[state]; // Clean up
+        delete req.session[state];
         return res.redirect('/?message=Error+connecting+TikTok:+Authentication+code+missing&status=error');
     }
-
     try {
-        // Exchange code for access token
         const tokenResponse = await axios.post(`https://open.tiktokapis.com/v2/oauth/token/`, new URLSearchParams({
             client_key: TIKTOK_CLIENT_KEY,
             client_secret: TIKTOK_CLIENT_SECRET,
@@ -579,26 +653,18 @@ app.get('/auth/tiktok/callback', async (req, res) => {
                 'Content-Type': 'application/x-www-form-urlencoded'
             }
         });
-
         const { access_token, refresh_token, open_id, scope, expires_in } = tokenResponse.data;
-
         if (!access_token || !open_id) {
             console.error('TikTok auth callback error: No access_token or open_id received.', tokenResponse.data);
             delete req.session[state];
             return res.redirect('/?message=Error+connecting+TikTok:+Failed+to+obtain+access+token&status=error');
         }
-
-        // Store TikTok tokens and user info in session
         req.session[state].tiktokAccessToken = access_token;
         req.session[state].tiktokRefreshToken = refresh_token;
         req.session[state].tiktokUserID = open_id;
         req.session[state].tiktokScope = scope;
         req.session[state].tiktokExpiresIn = expires_in;
-
-        // Redirect to a common frontend page that will handle finalization
-        // This page will fetch project name/desc from sessionStorage and POST to a new backend endpoint
         res.redirect(`/finalize-project.html?state=${state}&service=tiktok`);
-
     } catch (error) {
         const errorMessage = error.response && error.response.data && error.response.data.error_description ?
                              error.response.data.error_description :
@@ -610,137 +676,89 @@ app.get('/auth/tiktok/callback', async (req, res) => {
 });
 
 // --- Google Drive Auth ---
-// Step 1: Initiate Google Drive authentication
 app.get('/auth/google/initiate', (req, res) => {
     const { projectId } = req.query;
     if (!projectId) {
         return res.status(400).send('Project ID is required');
     }
-    // Store projectId in session to use it in the callback
     req.session.gDriveProjectId = projectId;
-
     const scopes = [
-        'https://www.googleapis.com/auth/drive.file', // Full access to files created by an app
-        'https://www.googleapis.com/auth/userinfo.profile' // Basic profile info
+        'https://www.googleapis.com/auth/drive.file',
+        'https://www.googleapis.com/auth/userinfo.profile'
     ];
-
     const authUrl = oauth2Client.generateAuthUrl({
-        access_type: 'offline', // Request a refresh token
+        access_type: 'offline',
         scope: scopes,
-        // A unique state value should be used to prevent CSRF attacks, similar to Facebook/TikTok
-        // For simplicity in this example, it's omitted but recommended for production
     });
     res.redirect(authUrl);
 });
 
-// Step 2: Google Drive callback with authorization code
 app.get('/auth/google/callback', async (req, res) => {
     const { code, error } = req.query;
     const projectId = req.session.gDriveProjectId;
-
     if (error) {
         console.error('Google Auth callback error:', error);
-        delete req.session.gDriveProjectId; // Clean up session
+        delete req.session.gDriveProjectId;
         return res.redirect(`/?message=Error+connecting+Google+Drive:+${encodeURIComponent(error)}&status=error`);
     }
-
     if (!code) {
-        delete req.session.gDriveProjectId; // Clean up session
+        delete req.session.gDriveProjectId;
         return res.redirect('/?message=Error+connecting+Google+Drive:+Authorization+code+missing&status=error');
     }
-
     if (!projectId) {
-        // This case might happen if the session expired or was lost.
         console.error('Google Auth callback: Project ID missing from session.');
         return res.redirect('/?message=Error+connecting+Google+Drive:+Project+ID+missing+from+session.+Please+try+again.&status=error');
     }
-
     try {
-        // 1. Token Exchange
         const { tokens } = await oauth2Client.getToken(code);
         oauth2Client.setCredentials(tokens);
-
-        // 2. Get Project Details
-        const project = await dataStore.findProjectById(projectId); // Added await
+        const project = await dataStore.findProjectById(projectId);
         if (!project) {
             console.error(`Google Auth Callback: Project not found with ID: ${projectId}`);
             delete req.session.gDriveProjectId;
             return res.redirect(`/?message=Error+Google+Drive+setup:+Project+not+found&status=error`);
         }
-
-        // 3. Create Google Drive Service Client
         const drive = google.drive({ version: 'v3', auth: oauth2Client });
         const parentFolderName = "marketing-agent";
         let parentFolderId;
-
-        // 4. Check/Create "marketing-agent" Parent Folder
         const folderQuery = `name='${parentFolderName}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false`;
         const { data: { files: existingFolders } } = await drive.files.list({ q: folderQuery, fields: 'files(id, name)' });
-
         if (existingFolders && existingFolders.length > 0) {
             parentFolderId = existingFolders[0].id;
         } else {
-            const fileMetadata = {
-                name: parentFolderName,
-                mimeType: 'application/vnd.google-apps.folder',
-            };
-            const { data: newFolder } = await drive.files.create({
-                resource: fileMetadata,
-                fields: 'id',
-            });
+            const fileMetadata = { name: parentFolderName, mimeType: 'application/vnd.google-apps.folder' };
+            const { data: newFolder } = await drive.files.create({ resource: fileMetadata, fields: 'id' });
             parentFolderId = newFolder.id;
         }
-
         if (!parentFolderId) {
             console.error(`Google Auth Callback: Failed to find or create parent folder '${parentFolderName}' for project ${projectId}`);
             delete req.session.gDriveProjectId;
             return res.redirect(`/?message=Error+Google+Drive+setup:+Could+not+establish+parent+folder&status=error&projectId=${projectId}`);
         }
-
-        // 5. Create Project-Specific Folder
-        const projectFolderName = project.name; // Use project's name for the folder
-        const projectFolderMetadata = {
-            name: projectFolderName,
-            mimeType: 'application/vnd.google-apps.folder',
-            parents: [parentFolderId],
-        };
-        const { data: newProjectFolder } = await drive.files.create({
-            resource: projectFolderMetadata,
-            fields: 'id',
-        });
+        const projectFolderName = project.name;
+        const projectFolderMetadata = { name: projectFolderName, mimeType: 'application/vnd.google-apps.folder', parents: [parentFolderId] };
+        const { data: newProjectFolder } = await drive.files.create({ resource: projectFolderMetadata, fields: 'id' });
         const googleDriveFolderId = newProjectFolder.id;
-
         if (!googleDriveFolderId) {
             console.error(`Google Auth Callback: Failed to create project-specific folder for project ${projectId}`);
             delete req.session.gDriveProjectId;
             return res.redirect(`/?message=Error+Google+Drive+setup:+Could+not+create+project+folder&status=error&projectId=${projectId}`);
         }
-
-        // 6. Update Project in DataStore
-        const updateData = {
-            googleDriveFolderId: googleDriveFolderId,
-            googleDriveAccessToken: tokens.access_token,
-        };
+        const updateData = { googleDriveFolderId: googleDriveFolderId, googleDriveAccessToken: tokens.access_token };
         if (tokens.refresh_token) {
             updateData.googleDriveRefreshToken = tokens.refresh_token;
         }
-        const updatedProject = await dataStore.updateProjectById(projectId, updateData); // Added await
-
+        const updatedProject = await dataStore.updateProjectById(projectId, updateData);
         if (!updatedProject) {
-            // This is unlikely if findProjectById succeeded, but good to check
             console.error(`Google Auth Callback: Failed to update project ${projectId} in DataStore after GDrive setup.`);
-            // Note: At this point, folders are created on GDrive. Manual cleanup might be needed or a rollback mechanism.
             delete req.session.gDriveProjectId;
             return res.redirect(`/?message=Error+Google+Drive+setup:+Failed+to+save+Drive+details+to+project&status=error&projectId=${projectId}`);
         }
-
-        // 7. Redirect
-        delete req.session.gDriveProjectId; // Clean up session
-        res.redirect(`/project-details.html?projectId=${projectId}&gdriveStatus=success`); // Redirect to project details or a settings page
-
+        delete req.session.gDriveProjectId;
+        res.redirect(`/project-details.html?projectId=${projectId}&gdriveStatus=success`);
     } catch (err) {
         console.error(`Google Auth Callback Error for projectId ${projectId}:`, err.response ? err.response.data : err.message, err.stack);
-        delete req.session.gDriveProjectId; // Clean up session
+        delete req.session.gDriveProjectId;
         const errorMessage = err.response && err.response.data && err.response.data.error_description
             ? err.response.data.error_description
             : (err.response && err.response.data && err.response.data.error ? err.response.data.error : 'Failed to process Google authentication.');
@@ -749,51 +767,41 @@ app.get('/auth/google/callback', async (req, res) => {
 });
 
 // --- Facebook Page Selection & Project Finalization API ---
-
-// GET /api/facebook/pages - Retrieve pages stored in session after Facebook auth
 app.get('/api/facebook/pages', (req, res) => {
     const { state } = req.query;
     if (!state) {
         return res.status(400).json({ error: 'State parameter is missing. Cannot retrieve pages.' });
     }
-
     const sessionState = req.session[state];
     if (!sessionState || sessionState.service !== 'facebook' || !sessionState.fbPages) {
         console.error('API /api/facebook/pages error: Invalid session state or Facebook pages not found.', { queryState: state, sessionDataExists: !!sessionState });
         return res.status(400).json({ error: 'Invalid session state or Facebook pages not found. Please try reconnecting your Facebook account.' });
     }
-
-    // fbPages should be an array of page objects {id, name, access_token, perms}
     res.json(sessionState.fbPages);
 });
 
-// POST /api/facebook/finalize-project - Create/update project with Facebook details
-app.post('/api/facebook/finalize-project', async (req, res) => { // Added async
+app.post('/api/facebook/finalize-project', async (req, res) => {
     const { state, selectedPageID, projectName, projectDescription } = req.body;
-
-    if (!projectName) { // Specific check for projectName
+    if (!projectName) {
         return res.status(400).json({ error: 'Project name is required.' });
     }
     if (!state || !selectedPageID) {
         return res.status(400).json({ error: 'Missing required fields: state or selectedPageID.' });
     }
-
     const sessionState = req.session[state];
     if (!sessionState ||
         sessionState.service !== 'facebook' ||
-        !sessionState.initiated || // Check initiated flag
+        !sessionState.initiated ||
         !sessionState.fbUserToken ||
         !sessionState.facebookUserID ||
         !sessionState.fbPages) {
         console.error('API /api/facebook/finalize-project error: Invalid session state or missing Facebook data.', { bodyState: state, sessionDataExists: !!sessionState });
         return res.status(400).json({ error: 'Invalid session state or required connection data not found. Please try reconnecting your Facebook account.' });
     }
-
     const selectedPage = sessionState.fbPages.find(page => page.id === selectedPageID);
     if (!selectedPage) {
         return res.status(404).json({ error: 'Selected Facebook Page not found in your session data. Please ensure the page was correctly selected or try reconnecting.' });
     }
-
     try {
         const projectData = {
             name: projectName,
@@ -805,33 +813,30 @@ app.post('/api/facebook/finalize-project', async (req, res) => { // Added async
             facebookPageAccessToken: selectedPage.access_token,
             facebookPermissions: selectedPage.perms || []
         };
-
-        const newProject = await dataStore.addProject(projectData); // Added await
+        const newProject = await dataStore.addProject(projectData);
         delete req.session[state];
         res.status(201).json(newProject);
-
     } catch (error) {
         console.error('Error in POST /api/facebook/finalize-project while saving project:', error);
         res.status(500).json({ error: 'Failed to save project data. Please try again.' });
     }
 });
 
-
 // === PROJECT API ENDPOINTS ===
-
-// POST /api/projects - Create a new project
-app.post('/api/projects', async (req, res) => { // Added async
-    const { name, description } = req.body;
+app.post('/api/projects', async (req, res) => {
+    const { name, description, wordpressUrl, wordpressUsername, wordpressApplicationPassword } = req.body;
     if (!name) {
         return res.status(400).json({ error: 'Project name is required.' });
     }
     try {
-        // Note: This endpoint creates a project WITHOUT social media details.
-        // The `addProject` function in dataStore.js should correctly initialize
-        // social media fields to their defaults (null or []) if they are not provided,
-        // which is the case here.
-        const projectData = { name, description };
-        const newProject = await dataStore.addProject(projectData); // Added await
+        const projectData = {
+            name,
+            description,
+            wordpressUrl: wordpressUrl || null,
+            wordpressUsername: wordpressUsername || null,
+            wordpressApplicationPassword: wordpressApplicationPassword || null
+        };
+        const newProject = await dataStore.addProject(projectData);
         res.status(201).json(newProject);
     } catch (error) {
         console.error('Error creating project via POST /api/projects:', error.message, error.stack);
@@ -839,10 +844,9 @@ app.post('/api/projects', async (req, res) => { // Added async
     }
 });
 
-// GET /api/projects - Get all projects
-app.get('/api/projects', async (req, res) => { // Added async
+app.get('/api/projects', async (req, res) => {
     try {
-        const projects = await dataStore.getAllProjects(); // Added await
+        const projects = await dataStore.getAllProjects();
         res.status(200).json(projects);
     } catch (error) {
         console.error('Error getting projects:', error.message, error.stack);
@@ -850,11 +854,10 @@ app.get('/api/projects', async (req, res) => { // Added async
     }
 });
 
-// GET /api/projects/:projectId - Get a specific project
-app.get('/api/projects/:projectId', async (req, res) => { // Added async
+app.get('/api/projects/:projectId', async (req, res) => {
     const { projectId } = req.params;
     try {
-        const project = await dataStore.findProjectById(projectId); // Added await
+        const project = await dataStore.findProjectById(projectId);
         if (!project) {
             return res.status(404).json({ error: 'Project not found' });
         }
@@ -865,17 +868,17 @@ app.get('/api/projects/:projectId', async (req, res) => { // Added async
     }
 });
 
-// PUT /api/projects/:projectId - Update a project
-app.put('/api/projects/:projectId', async (req, res) => { // Added async
+app.put('/api/projects/:projectId', async (req, res) => {
     const { projectId } = req.params;
-    const { name, description } = req.body;
+    // const { name, description, wordpressUrl, wordpressUsername, wordpressApplicationPassword } = req.body;
+    const updateData = req.body; // Accept all fields from body for update
 
-    if (name === undefined && description === undefined) { // Check if both are undefined
-        return res.status(400).json({ error: 'At least name or description must be provided for update' });
-    }
+    // if (name === undefined && description === undefined) {
+    //     return res.status(400).json({ error: 'At least name or description must be provided for update' });
+    // }
 
     try {
-        const updatedProject = await dataStore.updateProjectById(projectId, { name, description }); // Added await
+        const updatedProject = await dataStore.updateProjectById(projectId, updateData);
         if (!updatedProject) {
             return res.status(404).json({ error: 'Project not found for update' });
         }
@@ -886,11 +889,10 @@ app.put('/api/projects/:projectId', async (req, res) => { // Added async
     }
 });
 
-// DELETE /api/projects/:projectId - Delete a project
-app.delete('/api/projects/:projectId', async (req, res) => { // Added async
+app.delete('/api/projects/:projectId', async (req, res) => {
     const { projectId } = req.params;
     try {
-        const success = await dataStore.deleteProjectById(projectId); // Added await
+        const success = await dataStore.deleteProjectById(projectId);
         if (!success) {
             return res.status(404).json({ error: 'Project not found for deletion' });
         }
@@ -902,12 +904,10 @@ app.delete('/api/projects/:projectId', async (req, res) => { // Added async
 });
 
 // --- Project Assets API Endpoints ---
-
-// GET /api/projects/:projectId/assets - List all assets for a project
-app.get('/api/projects/:projectId/assets', async (req, res) => { // Added async
+app.get('/api/projects/:projectId/assets', async (req, res) => {
     const { projectId } = req.params;
     try {
-        const project = await dataStore.findProjectById(projectId); // Added await
+        const project = await dataStore.findProjectById(projectId);
         if (!project) {
             return res.status(404).json({ error: 'Project not found.' });
         }
@@ -919,82 +919,43 @@ app.get('/api/projects/:projectId/assets', async (req, res) => { // Added async
     }
 });
 
-// POST /api/projects/:projectId/assets/upload - Upload a new asset for a project
 app.post('/api/projects/:projectId/assets/upload', upload.single('assetFile'), async (req, res) => {
     const { projectId } = req.params;
-
     if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded. Please select a file.' });
     }
-
     try {
-        const project = await dataStore.findProjectById(projectId); // Added await
+        const project = await dataStore.findProjectById(projectId);
         if (!project) {
             return res.status(404).json({ error: 'Project not found.' });
         }
-
         if (!project.googleDriveFolderId || !project.googleDriveAccessToken) {
             return res.status(400).json({ error: 'Google Drive is not configured for this project. Please connect Google Drive first.' });
         }
-
-        // 1. Initialize OAuth2Client for Drive API
-        // Note: The global oauth2Client is for the initial auth flow.
-        // For API calls, we might need to re-initialize or ensure it's correctly set up
-        // with the project's specific tokens, especially if handling multiple users/projects.
-        // For simplicity, re-creating and setting credentials here for clarity.
         const client = new google.auth.OAuth2(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
         client.setCredentials({
             access_token: project.googleDriveAccessToken,
-            refresh_token: project.googleDriveRefreshToken, // May be null if not obtained/stored
+            refresh_token: project.googleDriveRefreshToken,
         });
         const drive = google.drive({ version: 'v3', auth: client });
-
-        // 2. Prepare File Metadata
-        const fileMetadata = {
-            name: req.file.originalname,
-            parents: [project.googleDriveFolderId],
-        };
-
-        // 3. Prepare Media
-        const media = {
-            mimeType: req.file.mimetype,
-            body: stream.Readable.from(req.file.buffer),
-        };
-
-        // 4. Upload to Google Drive
-        const uploadedFile = await drive.files.create({
-            resource: fileMetadata,
-            media: media,
-            fields: 'id, name, mimeType', // Fields to retrieve about the uploaded file
-        });
-
-        // 5. Generate Asset ID
+        const fileMetadata = { name: req.file.originalname, parents: [project.googleDriveFolderId] };
+        const media = { mimeType: req.file.mimetype, body: stream.Readable.from(req.file.buffer) };
+        const uploadedFile = await drive.files.create({ resource: fileMetadata, media: media, fields: 'id, name, mimeType' });
         const assetId = `asset_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
-        // Call vectorization service
         const assetNameForEmbedding = uploadedFile.data.name;
         const { vector, tags } = await vectorService.generateEmbedding(assetNameForEmbedding);
-
-        // 6. Create Asset Object
         const newAsset = {
             assetId,
             name: uploadedFile.data.name,
             type: uploadedFile.data.mimeType,
             googleDriveFileId: uploadedFile.data.id,
-            vector: vector, // Store the generated vector
-            tags: tags,     // Store the generated tags
+            vector: vector,
+            tags: tags,
         };
-
-        // 7. Update Project's Assets Array
-        const updatedAssets = [...(project.assets || []), newAsset]; // Ensure project.assets is an array
-        await dataStore.updateProjectById(projectId, { assets: updatedAssets }); // Added await
-
-        // Add asset vector to in-memory store
+        const updatedAssets = [...(project.assets || []), newAsset];
+        await dataStore.updateProjectById(projectId, { assets: updatedAssets });
         vectorService.addAssetVector(projectId, newAsset.assetId, newAsset.vector);
-
-        // 8. Respond
         res.status(201).json(newAsset);
-
     } catch (error) {
         console.error(`Error processing file upload for project ${projectId}:`, error.response ? error.response.data : error.message, error.stack);
         if (error.response && error.response.data && error.response.data.error) {
@@ -1008,36 +969,23 @@ app.post('/api/projects/:projectId/assets/upload', upload.single('assetFile'), a
     }
 });
 
-
 // === OBJECTIVE API ENDPOINTS ===
-
-// POST /api/projects/:projectId/objectives - Create a new objective for a project
-app.post('/api/projects/:projectId/objectives', async (req, res) => { // Added async
+app.post('/api/projects/:projectId/objectives', async (req, res) => {
     const { projectId } = req.params;
     const { title, brief } = req.body;
-
     if (!title) {
         return res.status(400).json({ error: 'Objective title is required' });
     }
-
     console.log(`[server.js POST objective] Received projectId from req.params: "${projectId}"`);
-    const project = await dataStore.findProjectById(projectId); // Added await, dataStore.findProjectById will log its own details
+    const project = await dataStore.findProjectById(projectId);
     if (!project) {
-        // findProjectById already logs the failure, this specific log might be redundant
-        // console.log(`[server.js POST objective] Initial project check FAILED for id: "${projectId}".`);
         return res.status(404).json({ error: 'Project not found to add objective to' });
     }
     console.log(`[server.js POST objective] Initial project check passed for id: "${projectId}". Proceeding to call dataStore.addObjective.`);
-
     try {
-        // Pass objective data (title, brief) and the validated project.id to dataStore.addObjective
-        // The Objective instance will be created within dataStore.addObjective
         const objectiveData = { title, brief };
-        const savedObjective = await dataStore.addObjective(objectiveData, project.id); // Added await
-
+        const savedObjective = await dataStore.addObjective(objectiveData, project.id);
         if (!savedObjective) {
-            // This case might occur if dataStore.addObjective returns null (e.g., if its internal project check failed, though unlikely here as we checked 'project' already)
-            // Or if the Objective constructor within dataStore.addObjective had an issue.
             console.error(`[server.js POST objective] dataStore.addObjective returned null for projectId: ${project.id}`);
             return res.status(500).json({ error: 'Failed to create objective due to an internal dataStore issue.' });
         }
@@ -1048,24 +996,20 @@ app.post('/api/projects/:projectId/objectives', async (req, res) => { // Added a
     }
 });
 
-// GET /api/projects/:projectId/objectives - Get all objectives for a project
-app.get('/api/projects/:projectId/objectives', async (req, res) => { // Added async
+app.get('/api/projects/:projectId/objectives', async (req, res) => {
     const { projectId } = req.params;
-
-    // Added logging
     console.log(`[SERVER LOG] Received request for objectives for projectId: ${projectId}`);
-    const allProjects = await dataStore.getAllProjects(); // Added await
+    const allProjects = await dataStore.getAllProjects();
     const currentProjectIds = allProjects.map(p => p.id);
     console.log(`[SERVER LOG] Project IDs currently in dataStore: ${JSON.stringify(currentProjectIds)}`);
-
-    const project = await dataStore.findProjectById(projectId); // Added await
+    const project = await dataStore.findProjectById(projectId);
     if (!project) {
-        console.log(`[SERVER LOG] Project with ID ${projectId} NOT FOUND in dataStore.`); // Added for clarity
+        console.log(`[SERVER LOG] Project with ID ${projectId} NOT FOUND in dataStore.`);
         return res.status(404).json({ error: 'Project not found' });
     }
     try {
-        console.log(`[SERVER LOG] Project with ID ${projectId} found. Fetching objectives.`); // Added for clarity
-        const objectives = await dataStore.getObjectivesByProjectId(projectId); // Added await
+        console.log(`[SERVER LOG] Project with ID ${projectId} found. Fetching objectives.`);
+        const objectives = await dataStore.getObjectivesByProjectId(projectId);
         res.status(200).json(objectives);
     } catch (error) {
         console.error(`[SERVER LOG] Error getting objectives for project ${projectId}:`, error);
@@ -1073,11 +1017,10 @@ app.get('/api/projects/:projectId/objectives', async (req, res) => { // Added as
     }
 });
 
-// GET /api/objectives/:objectiveId - Get a specific objective
-app.get('/api/objectives/:objectiveId', async (req, res) => { // Added async
+app.get('/api/objectives/:objectiveId', async (req, res) => {
     const { objectiveId } = req.params;
     try {
-        const objective = await dataStore.findObjectiveById(objectiveId); // Added await
+        const objective = await dataStore.findObjectiveById(objectiveId);
         if (!objective) {
             return res.status(404).json({ error: 'Objective not found' });
         }
@@ -1088,23 +1031,17 @@ app.get('/api/objectives/:objectiveId', async (req, res) => { // Added async
     }
 });
 
-// PUT /api/objectives/:objectiveId - Update an objective
-app.put('/api/objectives/:objectiveId', async (req, res) => { // Added async
+app.put('/api/objectives/:objectiveId', async (req, res) => {
     const { objectiveId } = req.params;
-    const { title, brief } = req.body; // Original: const { title, brief, plan } = req.body;
-
-    if (title === undefined && brief === undefined) { // Original: if (title === undefined && brief === undefined && plan === undefined) {
-        return res.status(400).json({ error: 'At least title or brief must be provided for update' }); // Adjusted message
+    const { title, brief } = req.body;
+    if (title === undefined && brief === undefined) {
+        return res.status(400).json({ error: 'At least title or brief must be provided for update' });
     }
-
     try {
-        // Construct updateData object based on provided fields
         const updateData = {};
         if (title !== undefined) updateData.title = title;
         if (brief !== undefined) updateData.brief = brief;
-        // if (plan !== undefined) updateData.plan = plan; // Removed plan from direct update here, handled by approve endpoint
-
-        const updatedObjective = await dataStore.updateObjectiveById(objectiveId, updateData); // Added await, changed params
+        const updatedObjective = await dataStore.updateObjectiveById(objectiveId, updateData);
         if (!updatedObjective) {
             return res.status(404).json({ error: 'Objective not found for update' });
         }
@@ -1115,11 +1052,10 @@ app.put('/api/objectives/:objectiveId', async (req, res) => { // Added async
     }
 });
 
-// DELETE /api/objectives/:objectiveId - Delete an objective
-app.delete('/api/objectives/:objectiveId', async (req, res) => { // Added async
+app.delete('/api/objectives/:objectiveId', async (req, res) => {
     const { objectiveId } = req.params;
     try {
-        const success = await dataStore.deleteObjectiveById(objectiveId); // Added await
+        const success = await dataStore.deleteObjectiveById(objectiveId);
         if (!success) {
             return res.status(404).json({ error: 'Objective not found for deletion' });
         }
@@ -1130,7 +1066,7 @@ app.delete('/api/objectives/:objectiveId', async (req, res) => { // Added async
     }
 });
 
-// === OBJECTIVE CHAT API ENDPOINT ===
+// === OBJECTIVE CHAT API ENDPOINT (OLD - to be replaced by CopilotKit endpoint) ===
 app.post('/api/objectives/:objectiveId/chat', async (req, res) => {
     const { objectiveId } = req.params;
     const { userInput } = req.body;
@@ -1138,27 +1074,33 @@ app.post('/api/objectives/:objectiveId/chat', async (req, res) => {
     if (!userInput) {
         return res.status(400).json({ error: 'userInput is required' });
     }
-
     try {
-        const objective = await dataStore.findObjectiveById(objectiveId); // Added await
+        const objective = await dataStore.findObjectiveById(objectiveId);
         if (!objective) {
             return res.status(404).json({ error: 'Objective not found' });
         }
+        // This now directly uses the imported agent instance's methods
+        const agentResponse = await agent.getAgentResponse(userInput, objective.chatHistory, objectiveId);
+        await dataStore.addMessageToObjectiveChat(objectiveId, 'user', userInput);
+        await dataStore.addMessageToObjectiveChat(objectiveId, 'agent', agentResponse.message || agentResponse);
 
-        // Get agent response using the objective's specific chat history
-        const agentResponse = await getAgentResponse(userInput, objective.chatHistory, objectiveId);
+        // If agentResponse contains plan updates, we need to persist them
+        if (agentResponse.planStatus && objective.plan) {
+            const updatedPlan = {
+                ...objective.plan,
+                status: agentResponse.planStatus,
+                currentStepIndex: agentResponse.currentStep !== undefined ? agentResponse.currentStep + 1 : objective.plan.currentStepIndex,
+            };
+            if(agentResponse.planSteps) updatedPlan.steps = agentResponse.planSteps;
+            await dataStore.updateObjectiveById(objectiveId, { plan: updatedPlan });
+        }
 
-        // Add user message to objective's chat history
-        await dataStore.addMessageToObjectiveChat(objectiveId, 'user', userInput); // Added await
-        // Add agent response to objective's chat history
-        await dataStore.addMessageToObjectiveChat(objectiveId, 'agent', agentResponse); // Added await
-
-        res.json({ response: agentResponse });
+        // Return the full agent response which might include plan status, etc.
+        res.json(agentResponse);
 
     } catch (error) {
         console.error(`Error in objective chat for ${objectiveId}:`, error);
-        // Check if the error is from the agent itself or a general server error
-        if (error.message.startsWith('Agent:')) { // Assuming agent errors are prefixed
+        if (error.message.startsWith('Agent:')) {
             res.status(500).json({ error: error.message });
         } else {
             res.status(500).json({ error: 'Failed to get agent response for objective' });
@@ -1166,20 +1108,21 @@ app.post('/api/objectives/:objectiveId/chat', async (req, res) => {
     }
 });
 
-// === Original Chat API endpoint (to be DEPRECATED or modified later if needed) ===
-// The /api/chat endpoint has been removed as it's redundant and not objective-specific.
-
-// All other GET requests not handled by the static middleware or API routes
-// should serve the main client application (index.html).
-// This is important for single-page applications (SPAs) and PWA navigation.
 app.get(/^\/(?!api).*/, (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'public', 'index.html'));
+  // If the client app is built to a 'dist' or 'build' folder inside 'client'
+  const clientBuildPath = path.join(__dirname, '..', 'client', 'dist'); // For Vite
+  // const clientBuildPath = path.join(__dirname, '..', 'client', 'build'); // For Create React App
+
+  // Serve static assets from the client build directory
+  app.use(express.static(clientBuildPath)); // This should ideally be earlier if it's serving all client assets
+
+  // For any GET request not handled by API routes or static files, serve index.html
+  res.sendFile(path.join(clientBuildPath, 'index.html'));
 });
+
 
 app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}`);
-
-  // Start the scheduler
   console.log(`Starting scheduler to check for tasks every ${SCHEDULER_INTERVAL_MS / 1000} seconds.`);
   setInterval(() => {
     try {
