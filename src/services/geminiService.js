@@ -131,7 +131,6 @@ async function* fetchGeminiResponse(userInput, chatHistory, projectAssets = [], 
             }
         }
       // Process any remaining data in the buffer after the stream ends (if any)
-      // This is less likely with `\n\n` as a delimiter for SSE but good for robustness
       if (buffer.startsWith('data: ')) {
           const jsonPayload = buffer.substring(6).trim();
           if (jsonPayload) {
@@ -145,19 +144,19 @@ async function* fetchGeminiResponse(userInput, chatHistory, projectAssets = [], 
                               yield { text: part.text };
                           } else if (part.tool_call) {
                               yield { tool_call: part.tool_call };
-                              return; // End generation after a tool call
+                              return;
                           }
                       }
                   } else if (parsedChunk.error) {
-                     console.error('GeminiService (fetchGeminiResponse): Error in final stream data fragment:', parsedChunk.error);
+                     console.error('GeminiService (fetchGeminiResponse): Error in final stream data fragment (buffer):', parsedChunk.error);
                      throw new Error(`Gemini API Stream Error: ${parsedChunk.error.message || JSON.stringify(parsedChunk.error)}`);
                   }
               } catch (e) {
-                  console.error('GeminiService (fetchGeminiResponse): Error parsing final JSON fragment from stream:', e, "Payload:", jsonPayload);
-                  // Potentially throw or handle as a failed stream if critical
+                  console.error('GeminiService (fetchGeminiResponse): Error parsing final JSON fragment from stream (buffer):', e, "Payload:", jsonPayload);
               }
           }
-      } // This closes the for-await loop for the stream
+      }
+    // This is the closing brace for the "if (stream)" block
     } else { // Non-streaming request
       const response = await axios.post(fullEndpoint, apiRequestBody, {
         headers: { 'Content-Type': 'application/json' }
