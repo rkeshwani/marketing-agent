@@ -145,18 +145,19 @@ async function* fetchGeminiResponse(userInput, chatHistory, projectAssets = [], 
                               yield { text: part.text };
                           } else if (part.tool_call) {
                               yield { tool_call: part.tool_call };
-                              return;
+                              return; // End generation after a tool call
                           }
                       }
                   } else if (parsedChunk.error) {
-                     console.error('GeminiService (fetchGeminiResponse): Error in final stream data:', parsedChunk.error);
+                     console.error('GeminiService (fetchGeminiResponse): Error in final stream data fragment:', parsedChunk.error);
                      throw new Error(`Gemini API Stream Error: ${parsedChunk.error.message || JSON.stringify(parsedChunk.error)}`);
                   }
               } catch (e) {
-                  console.error('GeminiService (fetchGeminiResponse): Error parsing final JSON from stream:', e, "Payload:", jsonPayload);
+                  console.error('GeminiService (fetchGeminiResponse): Error parsing final JSON fragment from stream:', e, "Payload:", jsonPayload);
+                  // Potentially throw or handle as a failed stream if critical
               }
           }
-      }
+      } // This closes the for-await loop for the stream
     } else { // Non-streaming request
       const response = await axios.post(fullEndpoint, apiRequestBody, {
         headers: { 'Content-Type': 'application/json' }
