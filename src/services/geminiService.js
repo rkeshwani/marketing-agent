@@ -93,100 +93,45 @@ async function* fetchGeminiResponse(userInput, chatHistory, projectAssets = [], 
         responseType: 'stream'
       });
 
-      const streamParser = (dataStream) => {
-        let buffer = '';
-        return new Promise((resolve, reject) => {
-          dataStream.on('data', (chunk) => {
-            buffer += chunk.toString();
-            let boundary;
-            while ((boundary = buffer.indexOf('\n\n')) !== -1) {
-              const message = buffer.substring(0, boundary);
-              buffer = buffer.substring(boundary + 2);
-              if (message.startsWith('data: ')) {
-                try {
-                  const jsonString = message.substring(6); // Remove 'data: '
-                  // console.log("Raw JSON string from stream:", jsonString); // Debug log
-                  const parsed = JSON.parse(jsonString);
-                  // console.log("Parsed SSE chunk:", parsed); // Debug log
-                  yield parsed; // Yield the parsed JSON object
-                } catch (e) {
-                  console.error('GeminiService (fetchGeminiResponse): Error parsing stream chunk JSON:', e, "Chunk:", message.substring(6));
-                  // Optionally yield an error object or skip
-                }
-              }
-            }
-          });
-          dataStream.on('end', () => {
-            if (buffer.startsWith('data: ')) { // Process any remaining data
-                try {
-                    const jsonString = buffer.substring(6);
-                    // console.log("Raw JSON string from stream (end):", jsonString); // Debug log
-                    const parsed = JSON.parse(jsonString);
-                    // console.log("Parsed SSE chunk (end):", parsed); // Debug log
-                    yield parsed;
-                } catch (e) {
-                    console.error('GeminiService (fetchGeminiResponse): Error parsing final stream chunk JSON:', e, "Chunk:", buffer.substring(6));
-                }
-            }
-            resolve();
-          });
-          dataStream.on('error', (err) => {
-            console.error('GeminiService (fetchGeminiResponse): Stream error:', err);
-            reject(err);
-          });
-        });
-      };
-      // This part needs to be an async generator itself to yield values
-      // The promise from streamParser is not directly yieldable in the outer generator
-      // For now, this structure is incorrect for yielding chunks.
-      // The correct way is to iterate over the stream and yield parts directly.
-      // Let's refine this.
-
       const dataStream = response.data;
       let buffer = '';
       for await (const chunk of dataStream) {
         buffer += chunk.toString();
         let eolIndex;
-        // The Gemini stream format might be a stream of JSON objects, not strictly SSE formatted in the raw HTTP stream from axios.
-        // The `alt=sse` parameter suggests the *API endpoint itself* will format it as SSE.
-        // So, we should expect `data: {...}\n\n` chunks.
-
-        // console.log("Stream chunk received:", chunk.toString()); // Log raw chunk
-
-        // Process buffer for SSE messages
+        // The Gemini stream with `alt=sse` should provide SSE formatted chunks.
         while ((eolIndex = buffer.indexOf('\n\n')) !== -1) {
             const messageLine = buffer.substring(0, eolIndex);
-            buffer = buffer.substring(eolIndex + 2); // Consume the message and the \n\n
+            buffer = buffer.substring(eolIndex + 2);
 
             if (messageLine.startsWith('data: ')) {
-                const jsonPayload = messageLine.substring(6).trim(); // Remove 'data: ' prefix
-                // console.log("Extracted JSON payload:", jsonPayload); // Log extracted payload
+                const jsonPayload = messageLine.substring(6).trim();
                 if (jsonPayload) {
                     try {
                         const parsedChunk = JSON.parse(jsonPayload);
-                        // console.log("Parsed chunk:", parsedChunk); // Log successfully parsed chunk
                         if (parsedChunk.candidates && parsedChunk.candidates.length > 0) {
                             const candidate = parsedChunk.candidates[0];
                             if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
                                 const part = candidate.content.parts[0];
                                 if (part.text) {
-                                    // console.log("Yielding text from stream:", part.text);
-                                    yield { text: part.text }; // Yield text chunks
+                                    yield { text: part.text };
                                 } else if (part.tool_call) {
-                                    // console.log("Yielding tool_call from stream:", part.tool_call);
-                                    yield { tool_call: part.tool_call }; // Yield tool call (usually at the end)
-                                    return; // Stop streaming after a tool call
+                                    yield { tool_call: part.tool_call };
+                                    return;
                                 }
                             }
+                        } else if (parsedChunk.error) { // Handle cases where the stream itself sends an error object
+                           console.error('GeminiService (fetchGeminiResponse): Error in stream data:', parsedChunk.error);
+                           throw new Error(`Gemini API Stream Error: ${parsedChunk.error.message || JSON.stringify(parsedChunk.error)}`);
                         }
                     } catch (e) {
                         console.error('GeminiService (fetchGeminiResponse): Error parsing JSON from stream:', e, "Payload:", jsonPayload);
+                        // Do not yield here, as it's a parsing error on our side.
                     }
                 }
             }
         }
-      }
-      // Process any remaining data in the buffer after the stream ends
+      // Process any remaining data in the buffer after the stream ends (if any)
+      // This is less likely with `\n\n` as a delimiter for SSE but good for robustness
       if (buffer.startsWith('data: ')) {
           const jsonPayload = buffer.substring(6).trim();
           if (jsonPayload) {
@@ -203,34 +148,38 @@ async function* fetchGeminiResponse(userInput, chatHistory, projectAssets = [], 
                               return;
                           }
                       }
+                  } else if (parsedChunk.error) {
+                     console.error('GeminiService (fetchGeminiResponse): Error in final stream data:', parsedChunk.error);
+                     throw new Error(`Gemini API Stream Error: ${parsedChunk.error.message || JSON.stringify(parsedChunk.error)}`);
                   }
               } catch (e) {
                   console.error('GeminiService (fetchGeminiResponse): Error parsing final JSON from stream:', e, "Payload:", jsonPayload);
               }
           }
       }
-
-
     } else { // Non-streaming request
       const response = await axios.post(fullEndpoint, apiRequestBody, {
         headers: { 'Content-Type': 'application/json' }
       });
-      console.log('GeminiService (fetchGeminiResponse): Raw API Response (non-stream):', JSON.stringify(response.data, null, 2));
+      // console.log('GeminiService (fetchGeminiResponse): Raw API Response (non-stream):', JSON.stringify(response.data, null, 2));
       if (response.data && response.data.candidates && response.data.candidates.length > 0) {
         const candidate = response.data.candidates[0];
         if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
           const part = candidate.content.parts[0];
           if (part.tool_call) {
-            console.log('GeminiService (fetchGeminiResponse): Returning tool_call.');
-            yield part.tool_call; // Yield as an object for consistency, even though it's one item.
+            // console.log('GeminiService (fetchGeminiResponse): Returning tool_call.');
+            yield part.tool_call;
             return;
           }
           if (part.text) {
-            console.log('GeminiService (fetchGeminiResponse): Returning text response.');
-            yield { text: part.text }; // Yield as an object for consistency
+            // console.log('GeminiService (fetchGeminiResponse): Returning text response.');
+            yield { text: part.text };
             return;
           }
         }
+      } else if (response.data && response.data.error) { // Handle cases where the non-streamed response is an error object
+        console.error('GeminiService (fetchGeminiResponse): Gemini API Error (non-stream):', response.data.error);
+        throw new Error(`Gemini API Error: ${response.data.error.message || JSON.stringify(response.data.error)}`);
       }
       console.error('GeminiService (fetchGeminiResponse): Unexpected API response structure (non-stream).', response.data);
       throw new Error('Gemini API response structure was not as expected (non-stream).');
@@ -238,29 +187,41 @@ async function* fetchGeminiResponse(userInput, chatHistory, projectAssets = [], 
   } catch (error) {
     console.error('GeminiService (fetchGeminiResponse): Gemini API call failed.', error.message);
     if (error.response) {
-      console.error('GeminiService (fetchGeminiResponse): API Error Response Data:', error.response.data);
-      console.error('GeminiService (fetchGeminiResponse): API Error Response Status:', error.response.status);
-      // If it's a stream error, error.response.data might be a stream itself.
-      if (error.response.data && typeof error.response.data.on === 'function') {
+      // console.error('GeminiService (fetchGeminiResponse): API Error Response Data:', error.response.data);
+      // console.error('GeminiService (fetchGeminiResponse): API Error Response Status:', error.response.status);
+      if (error.response.data && typeof error.response.data.on === 'function') { // Check if data is a stream
         let errorBody = '';
         try {
-            for await (const chunk of error.response.data) {
+            for await (const chunk of error.response.data) { // Consume the error stream
                 errorBody += chunk;
             }
             console.error('GeminiService (fetchGeminiResponse): API Error Stream Body:', errorBody);
+            // Try to parse it as JSON, as Gemini often returns JSON errors even on streams
+            try {
+                const parsedError = JSON.parse(errorBody);
+                if (parsedError.error && parsedError.error.message) {
+                    throw new Error(`Gemini API Stream Error: ${parsedError.error.message}`);
+                }
+            } catch (parseErr) {
+                // If not JSON, use the raw body
+            }
+            throw new Error(`Gemini API Stream Error: ${errorBody || error.message}`);
         } catch (streamReadError) {
             console.error('GeminiService (fetchGeminiResponse): Could not read error stream body:', streamReadError);
+            throw new Error(`Gemini API call failed: ${error.message} (and error reading stream body)`);
         }
+      } else if (error.response.data && error.response.data.error && error.response.data.error.message) {
+        // Handle JSON error response from non-streaming or already buffered stream error
+        throw new Error(`Gemini API Error: ${error.response.data.error.message}`);
       }
     }
-    // When throwing from an async generator, the generator is closed.
     throw new Error(`Gemini API call failed: ${error.message}`);
   }
 }
 
 
 async function generatePlanForObjective(objective, projectAssets = []) {
-  console.log('GeminiService (generatePlanForObjective): Received objective -', objective.title);
+  // console.log('GeminiService (generatePlanForObjective): Received objective -', objective.title);
   console.log('GeminiService (generatePlanForObjective): Received project assets:', projectAssets.length > 0 ? projectAssets.map(a => a.name) : 'No assets');
 
   let userPromptContent;
