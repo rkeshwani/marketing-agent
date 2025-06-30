@@ -4,16 +4,22 @@ import react from '@vitejs/plugin-react'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
-  base: '/proxy', // Set the base path for the application (no trailing slash)
+  base: '/', // Vite itself operates at root; proxy handles /proxy/5173/
   server: {
+    port: 5173,
+    strictPort: true,
+    middlewareMode: true, // Use middleware mode
     hmr: {
-      // If your Vite dev server is running on, say, port 5173,
-      // and your proxy is on 8379.
-      // The base path '/proxy/' should also apply to HMR.
-      // Vite might handle this automatically with `base`, but explicitly setting
-      // the path for HMR might be needed if issues persist.
-      // path: '/proxy/vite-hmr', // Example if HMR needs explicit path under proxy
-      clientPort: 5173, // Keep if Vite dev server port is different from proxy seen by client for WS
+      // HMR client needs to connect to the WebSocket via the proxy.
+      protocol: 'ws', // Assuming your code-server proxy URL (zeus:8379) is HTTP. Use 'wss' if HTTPS.
+      host: 'zeus',    // Public hostname of your code-server.
+      port: 8379,      // Public port of your code-server.
+      // The path for HMR. Since base is '/', Vite's HMR might default to '/__vite_hmr' or '/vite-hmr'.
+      // The proxy needs to map this under its prefix.
+      // e.g., browser connects to ws://zeus:8379/proxy/5173/__vite_hmr
+      // This path should be proxied by code-server to ws://localhost:5173/__vite_hmr
+      path: '/proxy/5173/__vite_hmr',
     }
+    // `origin` is generally not used with middlewareMode: true
   }
 })

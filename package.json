@@ -6,8 +6,9 @@
     "start": "node src/server.js",
     "test": "jest",
     "server": "node src/server.js",
-    "client": "cd client && npm install && npm run dev",
-    "build:client": "cd client && npm install && npm run build",
+    "client": "cd next_app && npm install && npm run dev",
+    "build:client": "cd next_app && npm install && npm run build",
+    "start:client": "cd next_app && npm run start",
     "dev": "concurrently \"npm run server\" \"npm run client\""
   },
   "dependencies": {
