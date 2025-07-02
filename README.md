@@ -18,18 +18,43 @@ This project is an AI-powered social media management tool that helps users stre
    ```
 
 2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+   - For the main backend server:
+     ```bash
+     npm install
+     ```
+   - For the Next.js client application:
+     ```bash
+     cd next_app
+     npm install
+     cd ..
+     ```
 
 3. **Set up environment variables:**
-   Create a `.env` file in the root of the project and add the necessary environment variables (see the "Environment Variables" section below).
+   Create a `.env` file in the root of the project and add the necessary environment variables for the main backend server (see the "Environment Variables" section below). The Next.js application in `next_app/` will also use this `.env` file for variables prefixed with `NEXT_PUBLIC_` (for client-side access) or directly for its server-side parts (like API routes).
 
-4. **Run the application:**
+4. **Run the application (Development):**
+   To run both the backend server and the Next.js client development server concurrently:
    ```bash
-   npm start
+   npm run dev
    ```
-   The application should now be running on `http://localhost:3000` (or your configured port).
+   - The main backend server will typically run on `http://localhost:3000`.
+   - The Next.js client application will typically run on `http://localhost:3001` (or the next available port if 3000 is taken by the backend, `code-server` proxying might alter the public URL). Access the application through the Next.js client URL. API calls from the client to `/api/*` (excluding `/api/agent/*`) will be proxied to the main backend server by Next.js during development.
+
+5. **Run the application (Production - Example):**
+   - Build the Next.js client:
+     ```bash
+     npm run build:client
+     ```
+   - Start the main backend server (which might also serve the Next.js client if configured for it, or Next.js runs separately):
+     ```bash
+     npm start
+     ```
+   - To start the Next.js production client server independently (if not served by the main backend):
+     ```bash
+     npm run start:client
+     ```
+   (Production deployment strategies can vary, e.g., using Vercel for Next.js and a separate host for the Node.js backend).
+
 
 ### Local Development with Microsandbox
 
@@ -72,21 +97,26 @@ For local development, especially when working with features that require a secu
 
 ## Project Structure
 
-- **`src/`**: Contains the main source code for the application.
-    - **`components/`**: Reusable UI components.
-    - **`pages/`**: Top-level page components.
-    - **`services/`**: Modules for interacting with APIs and backend services (including `geminiService.js`).
-    - **`store/`**: State management (e.g., Redux, Context API).
-    - **`utils/`**: Utility functions.
-- **`public/`**: Static assets like images, fonts, and the `index.html` file.
-- **`tests/`**: Contains all the test files for the application.
-    - **`unit/`**: Unit tests for individual components and functions.
-    - **`integration/`**: Integration tests for different parts of the application working together.
-    - **`e2e/`**: End-to-end tests simulating user scenarios.
+- **`src/`**: Contains the source code for the main backend Node.js/Express server.
+    - **`services/`**: Modules for interacting with external APIs (Gemini, social media, etc.) and backend services.
+    - **`models/`**: Data models (e.g., Project, Objective).
+    - **`providers/`**: Data store provider implementations.
+    - **`config/`**: Configuration files.
+    - **`tools/`**: Definitions for tools used by the agent.
+    - `agent.js`: Core AI agent logic.
+    - `dataStore.js`: Data store abstraction layer.
+    - `server.js`: The main Express server entry point.
+- **`next_app/`**: Contains the Next.js client application.
+    - **`src/app/`**: App Router structure, including pages, layouts, and API routes (e.g., `/api/agent/` for CopilotKit).
+    - **`src/components/`**: Reusable React components for the Next.js client.
+    - **`public/`**: Static assets for the Next.js client (e.g., icons, manifest.json).
+    - `next.config.js`: Next.js configuration, including API proxy rewrites.
+- **`public/`**: (Root directory) May contain a few remaining static files for auth callbacks (e.g., `finalize-project.html`). This should be minimized as most client assets are now in `next_app/public/`.
+- **`tests/`**: Contains backend test files. Client-side tests would reside within `next_app/`.
 
 ## Running Tests
 
-To run the test suite:
+To run the backend test suite:
 
 ```bash
 npm test
@@ -102,11 +132,11 @@ This will execute all unit, integration, and end-to-end tests. You can also run 
 
 The following environment variables are required to run the application. Create a `.env` file in the root of your project and add them:
 
-- **`NODE_ENV`**: The application environment (e.g., `development`, `production`, `test`). Defaults to `development`.
-- **`PORT`**: The port on which the application will run (e.g., `3000`). Defaults to `3000`.
-- **`APP_BASE_URL`**: The base URL of the application, including the protocol (e.g., `http://localhost:3000`). Used for constructing callback URLs.
-- **`REACT_APP_API_BASE_URL`**: The base URL for your backend API, used by the client-side (if applicable).
-- **`SESSION_SECRET`**: A secret key for session management.
+- **`NODE_ENV`**: The application environment (e.g., `development`, `production`, `test`). Defaults to `development`. Affects both backend and Next.js app.
+- **`PORT`**: The port on which the main backend server (`src/server.js`) will run (e.g., `3000`). Defaults to `3000`. The Next.js dev server will run on a separate port (e.g., 3001 or as configured in `next_app/package.json`).
+- **`APP_BASE_URL`**: The public base URL of the main backend server, including the protocol (e.g., `http://localhost:3000`). Used by `src/server.js` for constructing auth callback URLs.
+- **`NEXT_PUBLIC_...`**: For client-side environment variables in the Next.js app, prefix them with `NEXT_PUBLIC_` in your `.env` file (e.g., `NEXT_PUBLIC_APP_NAME="My App"`). These are bundled into the client.
+- **`SESSION_SECRET`**: A secret key for session management in `src/server.js`.
 
 ### Social Media & Service API Keys
 
