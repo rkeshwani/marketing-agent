@@ -1,7 +1,5 @@
 'use client';
 
-'use client';
-
 import React, { useState, useEffect } from 'react';
 import { CopilotContextParams } from '@copilotkit/react-core'; // Import for context
 import axios from 'axios';
